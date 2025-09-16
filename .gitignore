@@ -15,6 +15,7 @@ netDb
 /libi2pdclient.dll
 /libi2pdlang.dll
 *.exe
+mybuild/
 
 
 # Autotools
@@ -263,7 +264,7 @@ build/Makefile
 debian/i2pd.1.gz
 .pc/
 
-# qt 
+# qt
 
 qt/i2pd_qt/*.autosave
 qt/i2pd_qt/*.ui.bk*

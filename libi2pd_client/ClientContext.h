@@ -21,6 +21,7 @@
 #include "SAM.h"
 #include "BOB.h"
 #include "I2CP.h"
+#include "SAMSSL.h"
 #include "AddressBook.h"
 #include "I18N_langs.h"
 
@@ -150,6 +151,7 @@ namespace client
 			std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PUDPServerTunnel> > m_ServerForwards; // <destination,port> -> udp tunnel
 
 			SAMBridge * m_SamBridge;
+			SAMSslTerminator * m_SamSsl;
 			BOBCommandChannel * m_BOBCommandChannel;
 			I2CPServer * m_I2CPServer;
 

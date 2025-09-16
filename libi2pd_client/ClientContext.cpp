@@ -72,6 +72,21 @@ namespace client
 			{
 				m_SamBridge = new SAMBridge (samAddr, samPortTCP, samPortUDP, singleThread);
 				m_SamBridge->Start ();
+				// optional SAM over SSL terminator
+				bool samSsl; i2p::config::GetOption("sam.ssl", samSsl);
+				if (samSsl)
+				{
+					uint16_t samSslPort; i2p::config::GetOption("sam.sslport", samSslPort);
+					if (samSslPort)
+					{
+						std::string cert, key; i2p::config::GetOption("sam.cert", cert); i2p::config::GetOption("sam.key", key);
+						std::string samSslAddr; i2p::config::GetOption("sam.ssladdress", samSslAddr);
+						if (samSslAddr.empty()) samSslAddr = samAddr;
+						m_SamSsl = new SAMSslTerminator (samSslAddr, samSslPort, samAddr, samPortTCP, cert, key);
+						m_SamSsl->Start();
+						LogPrint(eLogInfo, "Clients: SAM over SSL listening at ", samSslAddr, ":", samSslPort, " -> ", samAddr, ":", samPortTCP);
+					}
+				}
 			}
 			catch (std::exception& e)
 			{
@@ -166,6 +181,14 @@ namespace client
 			m_SamBridge->Stop ();
 			delete m_SamBridge;
 			m_SamBridge = nullptr;
+		}
+
+		if (m_SamSsl)
+		{
+			LogPrint(eLogInfo, "Clients: Stopping SAM over SSL");
+			m_SamSsl->Stop ();
+			delete m_SamSsl;
+			m_SamSsl = nullptr;
 		}
 
 		if (m_BOBCommandChannel)

@@ -191,6 +191,11 @@ namespace config {
 			("sam.port", value<uint16_t>()->default_value(7656),              "SAM listen TCP port")
 			("sam.portudp", value<uint16_t>()->default_value(0),              "SAM listen UDP port")
 			("sam.singlethread", value<bool>()->default_value(true),          "Sessions run in the SAM bridge's thread")
+			("sam.ssl", value<bool>()->default_value(false),                  "Enable SAM over TLS/SSL listener")
+			("sam.ssladdress", value<std::string>()->default_value(""),       "SAM TLS/SSL listen address (empty -> sam.address)")
+			("sam.sslport", value<uint16_t>()->default_value(0),              "SAM TLS/SSL listen TCP port (0 disables)")
+			("sam.cert", value<std::string>()->default_value("sam.crt.pem"),  "SAM TLS/SSL certificate (PEM)")
+			("sam.key", value<std::string>()->default_value("sam.key.pem"),   "SAM TLS/SSL private key (PEM)")
 		;
 
 		options_description bob("BOB options");
