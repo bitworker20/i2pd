@@ -62,11 +62,22 @@ namespace client
 	{
 		if (!m_Acceptor) return;
 		m_IsRunning = true;
-		m_Thread.reset (new std::thread ([this]() { 
-			try { m_Service.run (); } catch (std::exception& ex) { LogPrint (eLogError, "SAMSSL: Runtime exception: ", ex.what()); }
-		}));
 		m_Acceptor->listen ();
 		Accept ();
+		m_Thread.reset (new std::thread ([this]() {
+			while (m_IsRunning)
+			{
+				try
+				{
+					m_Service.run ();
+				}
+				catch (std::exception& ex)
+				{
+					LogPrint (eLogError, "SAMSSL: Runtime exception: ", ex.what());
+				}
+				m_Service.restart ();
+			}
+		}));
 	}
 
 	void SAMSslTerminator::Stop ()
@@ -120,6 +131,7 @@ namespace client
 					LogPrint (eLogError, "SAMSSL: Handshake error: ", ecode.message());
 					return;
 				}
+				LogPrint (eLogDebug, "SAMSSL: Handshake OK");
 				ConnectBackend (socket);
 			});
 	}
@@ -132,42 +144,100 @@ namespace client
 			if (ecode)
 			{
 				LogPrint (eLogError, "SAMSSL: Backend connect error: ", ecode.message());
+				boost::system::error_code ignored;
+				frontend->lowest_layer().shutdown (boost::asio::ip::tcp::socket::shutdown_both, ignored);
+				frontend->lowest_layer().close (ignored);
 				return;
 			}
-			// bidirectional forwarding between frontend (TLS) and backend (plaintext SAM)
-			auto upBuf = std::make_shared<std::vector<uint8_t> >(8192);
-			auto downBuf = std::make_shared<std::vector<uint8_t> >(8192);
+			LogPrint (eLogDebug, "SAMSSL: Backend connected to ", m_BackendEndpoint);
+			struct Bridge : public std::enable_shared_from_this<Bridge>
+			{
+				std::shared_ptr<ssl_socket_t> front;
+				std::shared_ptr<boost::asio::ip::tcp::socket> back;
+				std::array<uint8_t, 8192> f2b{};
+				std::array<uint8_t, 8192> b2f{};
 
-			std::function<void()> forward_up, forward_down;
+				static std::shared_ptr<Bridge> create(std::shared_ptr<ssl_socket_t> f, std::shared_ptr<boost::asio::ip::tcp::socket> b)
+				{
+					auto s = std::make_shared<Bridge>();
+					s->front = std::move(f);
+					s->back = std::move(b);
+					return s;
+				}
 
-			forward_up = [this, frontend, backend, upBuf, &forward_up]() mutable {
-				frontend->async_read_some (boost::asio::buffer(*upBuf),
-					[frontend, backend, upBuf, &forward_up](const boost::system::error_code& re, std::size_t n)
+				void start()
+				{
+					read_front();
+					read_back();
+				}
+
+				void shutdown()
+				{
+					boost::system::error_code ec;
+					if (front)
 					{
-						if (re)
-							return;
-						boost::asio::async_write (*backend, boost::asio::buffer(upBuf->data(), n), boost::asio::transfer_all(),
-							[frontend, backend, upBuf, &forward_up](const boost::system::error_code& we, std::size_t) {
-								if (we) return; forward_up();
-							});
-					});
-			};
-
-			forward_down = [this, frontend, backend, downBuf, &forward_down]() mutable {
-				backend->async_read_some (boost::asio::buffer(*downBuf),
-					[frontend, backend, downBuf, &forward_down](const boost::system::error_code& re, std::size_t n)
+						front->lowest_layer().shutdown (boost::asio::ip::tcp::socket::shutdown_both, ec);
+						front->lowest_layer().close (ec);
+					}
+					if (back)
 					{
-						if (re)
-							return;
-						boost::asio::async_write (*frontend, boost::asio::buffer(downBuf->data(), n), boost::asio::transfer_all(),
-							[frontend, backend, downBuf, &forward_down](const boost::system::error_code& we, std::size_t) {
-								if (we) return; forward_down();
-							});
-					});
-			};
+						back->shutdown (boost::asio::ip::tcp::socket::shutdown_both, ec);
+						back->close (ec);
+					}
+				}
 
-			forward_up();
-			forward_down();
+				void read_front()
+				{
+					auto self = shared_from_this();
+					front->async_read_some (boost::asio::buffer(f2b),
+						[self](const boost::system::error_code& re, std::size_t n)
+						{
+							if (re)
+							{
+								self->shutdown();
+								return;
+							}
+							boost::asio::async_write (*self->back, boost::asio::buffer(self->f2b.data(), n), boost::asio::transfer_all(),
+								[self, n](const boost::system::error_code& we, std::size_t written)
+								{
+									if (we)
+									{
+										self->shutdown();
+										return;
+									}
+									LogPrint (eLogDebug, "SAMSSL: fwd TLS->SAM ", (int)written, "/", (int)n, " bytes");
+									self->read_front();
+								});
+						});
+				}
+
+				void read_back()
+				{
+					auto self = shared_from_this();
+					back->async_read_some (boost::asio::buffer(b2f),
+						[self](const boost::system::error_code& re, std::size_t n)
+						{
+							if (re)
+							{
+								self->shutdown();
+								return;
+							}
+							boost::asio::async_write (*self->front, boost::asio::buffer(self->b2f.data(), n), boost::asio::transfer_all(),
+								[self, n](const boost::system::error_code& we, std::size_t written)
+								{
+									if (we)
+									{
+										self->shutdown();
+										return;
+									}
+									LogPrint (eLogDebug, "SAMSSL: fwd SAM->TLS ", (int)written, "/", (int)n, " bytes");
+									self->read_back();
+								});
+						});
+				}
+			};
+			auto bridge = Bridge::create (frontend, backend);
+			bridge->start();
 		});
 	}
 

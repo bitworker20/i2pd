@@ -91,6 +91,17 @@ HELLO REPLY RESULT=OK VERSION=3.x
 
 If you see this, the TLS terminator and forwarding to the backend SAM are working.
 
+### Troubleshooting
+
+- No response to `HELLO VERSION ...`:
+  - Ensure the plain SAM bridge is enabled and reachable at `address:port`.
+  - Confirm `ssl = true` and `sslport > 0`.
+  - Check logs for lines containing `SAMSSL:`.
+  - Increase log level to debug to see handshake/connect/forward byte counters.
+- Connection closed immediately:
+  - Check certificate/key paths and permissions.
+  - Verify the TLS port is not blocked by a firewall.
+
 ### Limitations and Future Work
 
 - No client certificate (mTLS) support yet.
