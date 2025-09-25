@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
+* Copyright (c) 2013-2025, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -44,7 +44,7 @@ namespace i2p
 {
 namespace win32
 {
-	DWORD g_GracefulShutdownEndtime = 0;
+	static DWORD g_GracefulShutdownEndtime = 0;
 	bool g_isWinService;
 
 	static void ShowPopupMenu (HWND hWnd, POINT *curpos, int wDefaultItem)
@@ -105,116 +105,6 @@ namespace win32
 		nid.hWnd = hWnd;
 		nid.uID = ID_TRAY_ICON;
 		Shell_NotifyIcon (NIM_DELETE, &nid);
-	}
-
-	static void ShowUptime (std::stringstream& s, int seconds)
-	{
-		int num;
-
-		if ((num = seconds / 86400) > 0) {
-			s << num << " days, ";
-			seconds -= num * 86400;
-		}
-		if ((num = seconds / 3600) > 0) {
-			s << num << " hours, ";
-			seconds -= num * 3600;
-		}
-		if ((num = seconds / 60) > 0) {
-			s << num << " min, ";
-			seconds -= num * 60;
-		}
-		s << seconds << " seconds\n";
-	}
-
-	template <typename size> static void ShowTransfered (std::stringstream& s, size transfer)
-	{
-		auto bytes = transfer & 0x03ff;
-		transfer >>= 10;
-		auto kbytes = transfer & 0x03ff;
-		transfer >>= 10;
-		auto mbytes = transfer & 0x03ff;
-		transfer >>= 10;
-		auto gbytes = transfer;
-
-		if (gbytes)
-			s << gbytes << " GB, ";
-		if (mbytes)
-			s << mbytes << " MB, ";
-		if (kbytes)
-			s << kbytes << " KB, ";
-		s << bytes << " Bytes\n";
-	}
-
-	static void ShowNetworkStatus (std::stringstream& s, RouterStatus status, bool testing, RouterError error)
-	{
-		switch (status)
-		{
-			case eRouterStatusOK: s << "OK"; break;
-			case eRouterStatusFirewalled: s << "FW"; break;
-			case eRouterStatusUnknown: s << "Unk"; break;
-			case eRouterStatusProxy: s << "Proxy"; break;
-			case eRouterStatusMesh: s << "Mesh"; break;
-			default: s << "Unk";
-		};
-		if (testing)
-			s << " (Test)";
-		if (error != eRouterErrorNone)
-		{
-			switch (error)
-			{
-				case eRouterErrorClockSkew:
-					s << " - " << tr("Clock skew");
-				break;
-				case eRouterErrorOffline:
-					s << " - " << tr("Offline");
-				break;
-				case eRouterErrorSymmetricNAT:
-					s << " - " << tr("Symmetric NAT");
-				break;
-				case eRouterErrorFullConeNAT:
-					s << " - " << tr("Full cone NAT");
-				break;
-				case eRouterErrorNoDescriptors:
-					s << " - " << tr("No Descriptors");
-				break;
-				default: ;
-			}
-		}
-	}
-
-	static void PrintMainWindowText (std::stringstream& s)
-	{
-		s << "\n";
-		s << "Status: ";
-		ShowNetworkStatus (s, i2p::context.GetStatus (), i2p::context.GetTesting(), i2p::context.GetError ());
-		if (i2p::context.SupportsV6 ())
-		{
-			s << " / ";
-			ShowNetworkStatus (s, i2p::context.GetStatusV6 (), i2p::context.GetTestingV6(), i2p::context.GetErrorV6 ());
-		}
-		s << "; ";
-		s << "Success Rate: " << i2p::tunnel::tunnels.GetTunnelCreationSuccessRate() << "%\n";
-		s << "Uptime: "; ShowUptime(s, i2p::context.GetUptime ());
-		if (g_GracefulShutdownEndtime != 0)
-		{
-			DWORD GracefulTimeLeft = (g_GracefulShutdownEndtime - GetTickCount()) / 1000;
-			s << "Graceful shutdown, time left: "; ShowUptime(s, GracefulTimeLeft);
-		}
-		else
-			s << "\n";
-		s << "Inbound: " << i2p::transport::transports.GetInBandwidth() / 1024 << " KiB/s; ";
-		s << "Outbound: " << i2p::transport::transports.GetOutBandwidth() / 1024 << " KiB/s\n";
-		s << "Received: "; ShowTransfered (s, i2p::transport::transports.GetTotalReceivedBytes());
-		s << "Sent: "; ShowTransfered (s, i2p::transport::transports.GetTotalSentBytes());
-		s << "\n";
-		s << "Routers: " << i2p::data::netdb.GetNumRouters () << "; ";
-		s << "Floodfills: " << i2p::data::netdb.GetNumFloodfills () << "; ";
-		s << "LeaseSets: " << i2p::data::netdb.GetNumLeaseSets () << "\n";
-		s << "Tunnels: ";
-		s << "In: " << i2p::tunnel::tunnels.CountInboundTunnels() << "; ";
-		s << "Out: " << i2p::tunnel::tunnels.CountOutboundTunnels() << "; ";
-		s << "Transit: " << i2p::tunnel::tunnels.CountTransitTunnels() << "\n";
-		s << "\n";
 	}
 
 	static LRESULT CALLBACK WndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -404,7 +294,7 @@ namespace win32
 				PAINTSTRUCT ps;
 				RECT rp;
 				HFONT hFont;
-				std::stringstream s; PrintMainWindowText (s);
+				std::stringstream s; i2p::util::PrintMainWindowText (s);
 				hDC = BeginPaint (hWnd, &ps);
 				GetClientRect(hWnd, &rp);
 				SetTextColor(hDC, 0x00D43B69);
@@ -498,5 +388,13 @@ namespace win32
 			PostMessage (hWnd, WM_COMMAND, MAKEWPARAM(ID_STOP_GRACEFUL_SHUTDOWN, 0), 0);
 		return hWnd;
 	}
+
+	int GetGracefulShutdownRemainingTime ()
+	{
+		if (!g_GracefulShutdownEndtime) return 0;
+		auto remains = (g_GracefulShutdownEndtime - GetTickCount()) / 1000;
+		if (remains < 0) remains = 0;
+		return remains;
+	}	
 }
 }

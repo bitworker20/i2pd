@@ -11,7 +11,9 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <ostream>
+#include <sstream>
 
 namespace i2p
 {
@@ -27,9 +29,12 @@ namespace util
 		virtual bool start ();
 		virtual bool stop ();
 		virtual void run () {};
-
-		virtual void setDataDir (std::string path);
-
+		
+		virtual int GetGracefulShutdownInterval () const { return 0; };
+		void setDataDir (std::string_view path);
+		
+	public:
+		
 		bool isDaemon;
 		bool running;
 
@@ -49,6 +54,8 @@ namespace util
 		std::string DaemonDataDir;
 	};
 
+	void PrintMainWindowText (std::stringstream& s); // for GUI
+	
 #if defined(QT_GUI_LIB) // check if QT
 #define Daemon i2p::util::DaemonQT::Instance()
 	// dummy, invoked from RunQT
@@ -74,15 +81,21 @@ namespace util
 				static DaemonWin32 instance;
 				return instance;
 			}
-
+	
 			bool init(int argc, char* argv[]);
 			bool start();
 			bool stop();
 			void run ();
 
+			int GetGracefulShutdownInterval () const;
+
+		public:
+		
 			bool isGraceful;
 
-			DaemonWin32 ():isGraceful(false) {}
+		private:
+
+			DaemonWin32 (): isGraceful(false) {}
 	};
 #elif (defined(ANDROID) && !defined(ANDROID_BINARY))
 #define Daemon i2p::util::DaemonAndroid::Instance()
@@ -112,6 +125,8 @@ namespace util
 			bool stop();
 			void run ();
 
+			int GetGracefulShutdownInterval () const { return gracefulShutdownInterval; };
+			
 		private:
 
 			std::string pidfile;
