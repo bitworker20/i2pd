@@ -16,6 +16,7 @@
 #include <vector>
 #include <unordered_map>
 #include <boost/asio.hpp>
+#include "util.h"
 #include "Identity.h"
 #include "Destination.h"
 #include "Datagram.h"
@@ -35,6 +36,7 @@ namespace client
 	struct UDPSession
 	{
 		i2p::datagram::DatagramDestination * m_Destination;
+		std::weak_ptr<i2p::datagram::DatagramSession> m_LastDatagramSession;
 		boost::asio::ip::udp::socket IPSocket;
 		i2p::data::IdentHash Identity;
 		boost::asio::ip::udp::endpoint FromEndpoint;
@@ -45,6 +47,7 @@ namespace client
 		uint16_t RemotePort;
 
 		uint8_t m_Buffer[I2P_UDP_MAX_MTU];
+		uint32_t m_NextSendPacketNum, m_LastReceivedPacketNum;
 
 		UDPSession(boost::asio::ip::udp::endpoint localEndpoint,
 			const std::shared_ptr<i2p::client::ClientDestination> & localDestination,
@@ -101,7 +104,8 @@ namespace client
 
 		private:
 
-			void HandleRecvFromI2P (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
+			void HandleRecvFromI2P (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort, 
+				const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
 			void HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 			UDPSessionPtr ObtainUDPSession (const i2p::data::IdentityEx& from, uint16_t localPort, uint16_t remotePort);
 			uint32_t GetSessionIndex (uint16_t fromPort, uint16_t toPort) const { return ((uint32_t)fromPort << 16) + toPort; }
@@ -155,7 +159,8 @@ namespace client
 			typedef std::pair<boost::asio::ip::udp::endpoint, uint64_t> UDPConvo;
 			void RecvFromLocal ();
 			void HandleRecvFromLocal (const boost::system::error_code & e, std::size_t transferred);
-			void HandleRecvFromI2P (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
+			void HandleRecvFromI2P (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort, 
+				const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
 			void HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 			void TryResolving ();
 
@@ -177,6 +182,8 @@ namespace client
 			bool m_Gzip;
 			i2p::datagram::DatagramVersion m_DatagramVersion;
 			std::shared_ptr<UDPConvo> m_LastSession;
+			std::weak_ptr<i2p::datagram::DatagramSession> m_LastDatagramSession;
+			uint32_t m_NextSendPacketNum, m_LastReceivedPacketNum;
 
 		public:
 

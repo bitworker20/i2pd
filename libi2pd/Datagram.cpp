@@ -56,7 +56,8 @@ namespace datagram
 		return ObtainSession(ident);
 	}
 
-	void DatagramDestination::SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len, uint16_t fromPort, uint16_t toPort)
+	void DatagramDestination::SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
+		uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options)
 	{
 		if (session)
 		{
@@ -65,9 +66,18 @@ namespace datagram
 			{
 				case eDatagramV3:
 				{
-					constexpr uint8_t flags[] = { 0x00, 0x03 }; // datagram3, no options
-					msg = CreateDataMessage ({{m_Owner->GetIdentity ()->GetIdentHash (), 32}, 
-						{flags, 2}, {payload, len}}, fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM3, false); // datagram3
+					uint8_t flags[] = { 0x00, 0x03 }; // datagram3, no options
+					if (options)
+					{
+						uint8_t optionsBuf[256]; // TODO: evaluate actual size
+						size_t optionsLen = options->ToBuffer (optionsBuf, 256);
+						if (optionsLen) flags[1] |= DATAGRAM3_FLAG_OPTIONS;
+						msg = CreateDataMessage ({{m_Owner->GetIdentity ()->GetIdentHash (), 32}, {flags, 2}, 
+							{optionsBuf, optionsLen}, {payload, len}}, fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM3, false); // datagram3
+					}	
+					else
+						msg = CreateDataMessage ({{m_Owner->GetIdentity ()->GetIdentHash (), 32}, 
+							{flags, 2}, {payload, len}}, fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM3, false); // datagram3
 					break;
 				}
 				case eDatagramV1:
@@ -165,7 +175,7 @@ namespace datagram
 			session->Ack();
 			auto r = FindReceiver(toPort);
 			if(r)
-				r(identity, fromPort, toPort, buf + headerLen, len -headerLen);
+				r(identity, fromPort, toPort, buf + headerLen, len - headerLen, nullptr);
 			else
 				LogPrint (eLogWarning, "DatagramDestination: no receiver for port ", toPort);
 		}
@@ -216,10 +226,22 @@ namespace datagram
 				}	
 			}	
 		}
-		uint16_t flags = bufbe16toh (buf + identityLen);
+		const uint8_t * flags = buf + identityLen;
 		size_t offset = identityLen + 2;
-		if (flags & DATAGRAM2_FLAG_OPTIONS)
-			offset += bufbe16toh (buf + offset) + 2;
+		bool isOptions = false;
+		if (flags[1] & DATAGRAM2_FLAG_OPTIONS)
+		{	
+			isOptions = true;
+			m_Options.CleanUp ();
+			auto optionsLen = m_Options.FromBuffer (buf + offset, len - offset);
+			if (optionsLen)
+				offset += optionsLen;
+			else
+			{
+				LogPrint (eLogWarning, "Datagram: datagram2 can't read options");
+				return;
+			}
+		}	
 		if (offset > len)
 		{
 			LogPrint (eLogWarning, "Datagram: datagram2 is too short ", len, " expected ", offset);
@@ -228,7 +250,7 @@ namespace datagram
 		if (!verified)
 		{
 			std::shared_ptr<i2p::crypto::Verifier> transientVerifier;
-			if (flags & DATAGRAM2_FLAG_OFFLINE_SIGNATURE)
+			if (flags[1] & DATAGRAM2_FLAG_OFFLINE_SIGNATURE)
 			{	
 				transientVerifier = i2p::data::ProcessOfflineSignature (&identity, buf, len, offset);
 				if (!transientVerifier)
@@ -256,7 +278,7 @@ namespace datagram
 		session->Ack();
 		auto r = FindReceiver(toPort);
 		if(r)
-			r(identity, fromPort, toPort, buf + offset, len - offset - signatureLen);
+			r(identity, fromPort, toPort, buf + offset, len - offset - signatureLen, isOptions ? &m_Options : nullptr);
 		else
 			LogPrint (eLogWarning, "DatagramDestination: no receiver for port ", toPort);
 	}	
@@ -286,16 +308,28 @@ namespace datagram
 					auto r = FindReceiver(toPort);
 					if (r)
 					{
-						uint16_t flags = bufbe16toh (buf + 32);
+						const uint8_t * flags = buf + 32;
 						size_t offset = 34;
-						if (flags & DATAGRAM3_FLAG_OPTIONS)
-							offset += bufbe16toh (buf + offset) + 2;
+						bool isOptions = false;
+						if (flags[1] & DATAGRAM3_FLAG_OPTIONS)
+						{	
+							isOptions = true;
+							m_Options.CleanUp ();
+							auto optionsLen = m_Options.FromBuffer (buf + offset, len - offset);
+							if (optionsLen)
+								offset += optionsLen;
+							else
+							{
+								LogPrint (eLogWarning, "Datagram: datagram3 can't read options");
+								return;
+							}	
+						}	
 						if (offset > len)
 						{
 							LogPrint (eLogWarning, "Datagram: datagram3 is too short ", len, " expected ", offset);
 							return;
 						}	
-						r(*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset);
+						r(*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset, isOptions ? &m_Options : nullptr);
 					}	
 					else
 						LogPrint (eLogWarning, "Datagram: no receiver for port ", toPort);
