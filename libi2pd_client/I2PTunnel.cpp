@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -32,16 +32,14 @@ namespace client
 
 	I2PTunnelConnection::I2PTunnelConnection (I2PService * owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket,
 		std::shared_ptr<const i2p::data::LeaseSet> leaseSet, uint16_t port):
-		I2PServiceHandler(owner), m_Socket (socket), m_RemoteEndpoint (socket->remote_endpoint ()),
-		m_IsReceiving (false)
+		I2PServiceHandler(owner), m_Socket (socket), m_IsReceiving (false)
 	{
 		m_Stream = GetOwner()->GetLocalDestination ()->CreateStream (leaseSet, port);
 	}
 
 	I2PTunnelConnection::I2PTunnelConnection (I2PService * owner,
 		std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::shared_ptr<i2p::stream::Stream> stream):
-		I2PServiceHandler(owner), m_Socket (socket), m_Stream (stream),
-		m_RemoteEndpoint (socket->remote_endpoint ()), m_IsReceiving (false)
+		I2PServiceHandler(owner), m_Socket (socket), m_Stream (stream), m_IsReceiving (false)
 	{
 	}
 
@@ -60,15 +58,17 @@ namespace client
 
 	void I2PTunnelConnection::I2PConnect (const uint8_t * msg, size_t len)
 	{
-		if (m_Stream)
+		if (m_Stream && m_Socket && m_Socket->is_open ())
 		{
 			if (msg)
 				m_Stream->Send (msg, len); // connect and send
 			else
 				m_Stream->Send (m_Buffer, 0); // connect
+			StreamReceive ();
+			Receive ();
 		}
-		StreamReceive ();
-		Receive ();
+		else
+			Terminate ();
 	}
 
 	boost::asio::ip::address GetLoopbackAddressFor(const i2p::data::IdentHash & addr)
@@ -90,7 +90,7 @@ namespace client
 		boost::asio::ip::address ourIP = boost::asio::ip::address_v6 (bytes);
 		return ourIP;
 	}
-		
+
 #ifdef __linux__
 	static void MapToLoopback(std::shared_ptr<boost::asio::ip::tcp::socket> sock, const i2p::data::IdentHash & addr, bool isV4)
 	{
@@ -116,7 +116,7 @@ namespace client
 			I2PTunnelSetSocketOptions (m_Socket);
 #ifdef __linux__
 			if (isUniqueLocal && m_RemoteEndpoint.address ().is_loopback ())
-			{	
+			{
 				auto ident = m_Stream->GetRemoteIdentity()->GetIdentHash();
 				if (m_RemoteEndpoint.address ().is_v4 ())
 				{
@@ -127,7 +127,7 @@ namespace client
 				{
 					m_Socket->open (boost::asio::ip::tcp::v6 ());
 					MapToLoopback(m_Socket, ident, false);
-				}	
+				}
 			}
 #endif
 			m_Socket->async_connect (m_RemoteEndpoint, std::bind (&I2PTunnelConnection::HandleConnect,
@@ -158,12 +158,14 @@ namespace client
 		if (m_Stream)
 		{
 			m_Stream->Close ();
-			m_Stream.reset ();
+			m_Stream = nullptr;
 		}
-		boost::system::error_code ec;
-		m_Socket->shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec); // avoid RST
-		m_Socket->close ();
-
+		if (m_Socket && m_Socket->is_open ())
+		{
+			boost::system::error_code ec;
+			m_Socket->shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec); // avoid RST
+			m_Socket->close ();
+		}
 		Done(shared_from_this ());
 	}
 
@@ -173,11 +175,11 @@ namespace client
 		size_t bufSize = I2P_TUNNEL_CONNECTION_BUFFER_SIZE;
 		size_t unsentSize = m_Stream ? m_Stream->GetSendBufferSize () : 0;
 		if (unsentSize)
-		{	
+		{
 			if (unsentSize >= I2P_TUNNEL_CONNECTION_STREAM_MAX_SEND_BUFFER_SIZE) return; // buffer is full
 			if (unsentSize > I2P_TUNNEL_CONNECTION_STREAM_MAX_SEND_BUFFER_SIZE - I2P_TUNNEL_CONNECTION_BUFFER_SIZE)
 				bufSize = I2P_TUNNEL_CONNECTION_STREAM_MAX_SEND_BUFFER_SIZE - unsentSize;
-		}	
+		}
 		m_IsReceiving = true;
 		if (m_SSL)
 			m_SSL->async_read_some (boost::asio::buffer(m_Buffer, bufSize),
@@ -201,7 +203,7 @@ namespace client
 			}
 		}
 		else
-		{	
+		{
 			if (bytes_transferred < I2P_TUNNEL_CONNECTION_BUFFER_SIZE && !m_SSL)
 			{
 				boost::system::error_code ec;
@@ -212,22 +214,22 @@ namespace client
 					if (bytes_transferred + moreBytes > I2P_TUNNEL_CONNECTION_BUFFER_SIZE)
 						moreBytes = I2P_TUNNEL_CONNECTION_BUFFER_SIZE - bytes_transferred;
 					if (m_Stream->GetSendBufferSize () < I2P_TUNNEL_CONNECTION_STREAM_MAX_SEND_BUFFER_SIZE)
-					{	
+					{
 						size_t remaining = I2P_TUNNEL_CONNECTION_STREAM_MAX_SEND_BUFFER_SIZE - m_Stream->GetSendBufferSize ();
 						if (remaining < moreBytes) moreBytes = remaining;
-					}		
+					}
 					else
 						moreBytes = 0;
-				}	
+				}
 				if (moreBytes)
 				{
 					moreBytes = boost::asio::read (*m_Socket, boost::asio::buffer(m_Buffer + bytes_transferred, moreBytes), boost::asio::transfer_all (), ec);
 					if (!ec) bytes_transferred += moreBytes;
-				}	
-			}	
+				}
+			}
 			WriteToStream (m_Buffer, bytes_transferred);
 			Receive (); // try to receive more while being sent to stream
-		}	
+		}
 	}
 
 	void I2PTunnelConnection::WriteToStream (const uint8_t * buf, size_t len)
@@ -242,7 +244,8 @@ namespace client
 					else
 						s->Terminate ();
 				});
-			}
+			GetOwner ()->UpdateLastActivityTime ();
+		}
 	}
 
 	void I2PTunnelConnection::HandleWrite (const boost::system::error_code& ecode)
@@ -310,18 +313,19 @@ namespace client
 		else
 			boost::asio::async_write (*m_Socket, boost::asio::buffer (buf, len), boost::asio::transfer_all (),
 				std::bind (&I2PTunnelConnection::HandleWrite, shared_from_this (), std::placeholders::_1));
+		GetOwner ()->UpdateLastActivityTime ();
 	}
 
 	void I2PTunnelConnection::HandleConnect (const boost::system::error_code& ecode)
 	{
 		if (ecode)
 		{
-			LogPrint (eLogError, "I2PTunnel: Connect error: ", ecode.message ());
+			LogPrint (eLogError, "I2PTunnel: Connect error to ", m_RemoteEndpoint, " : ", ecode.message ());
 			Terminate ();
 		}
 		else
 		{
-			LogPrint (eLogDebug, "I2PTunnel: Connected");
+			LogPrint (eLogDebug, "I2PTunnel: Connected to ", m_RemoteEndpoint);
 			if (m_SSL)
 				m_SSL->async_handshake (boost::asio::ssl::stream_base::client,
 					std::bind (&I2PTunnelConnection::HandleHandshake, shared_from_this (), std::placeholders::_1));
@@ -493,8 +497,8 @@ namespace client
 				// add X-I2P fields
 				m_OutHeader << m_XI2P;
 				// end of header
-				m_OutHeader << "\r\n"; 
-				
+				m_OutHeader << "\r\n";
+
 				m_OutHeader << m_InHeader.str ().substr (m_InHeader.tellg ()); // data right after header
 				m_InHeader.str ("");
 				m_HeaderSent = true;
@@ -622,7 +626,7 @@ namespace client
 				uint16_t destinationPort, std::shared_ptr<boost::asio::ip::tcp::socket> socket):
 				I2PServiceHandler(parent), m_Address(address),
 				m_DestinationPort (destinationPort), m_Socket(socket) {};
-			void Handle();
+			void Handle() override;
 			void Terminate();
 		private:
 			void HandleStreamRequestComplete (std::shared_ptr<i2p::stream::Stream> stream);
@@ -633,6 +637,7 @@ namespace client
 
 	void I2PClientTunnelHandler::Handle()
 	{
+		GetOwner ()->UpdateLastActivityTime ();
 		GetOwner()->CreateStream (
 			std::bind (&I2PClientTunnelHandler::HandleStreamRequestComplete, shared_from_this(), std::placeholders::_1),
 			m_Address, m_DestinationPort);
@@ -643,11 +648,19 @@ namespace client
 		if (stream)
 		{
 			if (Kill()) return;
-			LogPrint (eLogDebug, "I2PTunnel: New connection");
-			auto connection = std::make_shared<I2PTunnelConnection>(GetOwner(), m_Socket, stream);
-			GetOwner()->AddHandler (connection);
-			connection->I2PConnect ();
-			Done(shared_from_this());
+			if (m_Socket && m_Socket->is_open ())
+			{
+				LogPrint (eLogDebug, "I2PTunnel: New connection");
+				auto connection = std::make_shared<I2PTunnelConnection>(GetOwner(), m_Socket, stream);
+				GetOwner()->AddHandler (connection);
+				connection->I2PConnect ();
+				Done(shared_from_this());
+			}
+			else
+			{
+				stream->AsyncClose ();
+				Terminate ();
+			}
 		}
 		else
 		{
@@ -693,7 +706,7 @@ namespace client
 	{
 		m_KeepAliveInterval = keepAliveInterval;
 		if (m_KeepAliveInterval)
-			m_KeepAliveTimer.reset (new boost::asio::deadline_timer (GetLocalDestination ()->GetService ()));
+			m_KeepAliveTimer.reset (new boost::asio::steady_timer (GetLocalDestination ()->GetService ()));
 	}
 
 	/* HACK: maybe we should create a caching IdentHash provider in AddressBook */
@@ -721,7 +734,7 @@ namespace client
 	{
 		if (m_KeepAliveTimer)
 		{
-			m_KeepAliveTimer->expires_from_now (boost::posix_time::seconds (m_KeepAliveInterval));
+			m_KeepAliveTimer->expires_after (std::chrono::seconds (m_KeepAliveInterval));
 			m_KeepAliveTimer->async_wait (std::bind (&I2PClientTunnel::HandleKeepAliveTimer,
 				this, std::placeholders::_1));
 		}
@@ -770,9 +783,9 @@ namespace client
 		auto localDestination = GetLocalDestination ();
 		if (localDestination)
 			localDestination->StopAcceptingStreams ();
-		if (m_Resolver)	
+		if (m_Resolver)
 			m_Resolver->cancel ();
-		
+
 		ClearHandlers ();
 	}
 
@@ -784,8 +797,8 @@ namespace client
 			std::bind (&I2PServerTunnel::HandleResolve, this,
 				std::placeholders::_1, std::placeholders::_2, stream));
 		return true;
-	}	
-		
+	}
+
 	void I2PServerTunnel::HandleResolve (const boost::system::error_code& ecode, boost::asio::ip::tcp::resolver::results_type endpoints,
 		std::shared_ptr<i2p::stream::Stream> stream)
 	{
@@ -902,7 +915,7 @@ namespace client
 				LogPrint (eLogWarning, "I2PTunnel: Address ", m_Address, " can't be resolved. Incoming connection dropped");
 				stream->Close ();
 				return;
-			}	
+			}
 		}
 	}
 
@@ -915,8 +928,8 @@ namespace client
 			conn->Connect (*m_LocalAddress);
 		else
 			conn->Connect (m_IsUniqueLocal);
-	}	
-		
+	}
+
 	std::shared_ptr<I2PTunnelConnection> I2PServerTunnel::CreateI2PConnection (std::shared_ptr<i2p::stream::Stream> stream)
 	{
 		return std::make_shared<I2PTunnelConnection> (this, stream, GetEndpoint (), m_SSLCtx);
@@ -925,15 +938,15 @@ namespace client
 
 	I2PServerTunnelHTTP::I2PServerTunnelHTTP (const std::string& name, const std::string& address,
 		uint16_t port, std::shared_ptr<ClientDestination> localDestination,
-		const std::string& host, uint16_t inport, bool gzip):
+		const std::string& host, uint16_t inport, bool gzip, bool i2pheaders):
 		I2PServerTunnel (name, address, port, localDestination, inport, gzip),
-		m_Host (host)
+		m_Host (host), m_I2PHeaders (i2pheaders)
 	{
 	}
 
 	std::shared_ptr<I2PTunnelConnection> I2PServerTunnelHTTP::CreateI2PConnection (std::shared_ptr<i2p::stream::Stream> stream)
 	{
-		if (m_XI2P.empty () || stream->GetRemoteIdentity () != m_From.lock ())
+		if (m_I2PHeaders && (m_XI2P.empty () || stream->GetRemoteIdentity () != m_From.lock ()))
 		{
 			auto from = stream->GetRemoteIdentity ();
 			m_From = from;
@@ -942,7 +955,7 @@ namespace client
 			ss << X_I2P_DEST_HASH << ": " << from->GetIdentHash ().ToBase64 () << "\r\n";
 			ss << X_I2P_DEST_B64 << ": " << from->ToBase64 () << "\r\n";
 			m_XI2P = ss.str ();
-		}	
+		}
 		return std::make_shared<I2PServerTunnelConnectionHTTP> (this, stream, GetEndpoint (), m_Host, m_XI2P, GetSSLCtx ());
 	}
 

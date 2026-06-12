@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -12,7 +12,7 @@
 #include <inttypes.h>
 #include <memory>
 #include <functional>
-#include <map>
+#include <unordered_map>
 #include <vector>
 #include "Base.h"
 #include "Gzip.h"
@@ -51,12 +51,12 @@ namespace datagram
 		eDatagramV1 = 1,
 		eDatagramV2 = 2,
 		eDatagramV3 = 3,
-	};	
+	};
 
 	constexpr uint8_t DATAGRAM2_FLAG_OPTIONS = 0x10;
 	constexpr uint8_t DATAGRAM2_FLAG_OFFLINE_SIGNATURE = 0x20;
 	constexpr uint8_t DATAGRAM3_FLAG_OPTIONS = 0x10;
-	
+
 	class DatagramSession : public std::enable_shared_from_this<DatagramSession>
 	{
 
@@ -79,10 +79,13 @@ namespace datagram
 
 			bool IsRatchets () const { return m_RoutingSession && m_RoutingSession->IsRatchets (); }
 			void SetRemoteLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls) { m_RemoteLeaseSet = ls; }
+			std::shared_ptr<const i2p::data::LeaseSet> GetRemoteLeaseSet () const { return m_RemoteLeaseSet; }
 
 			DatagramVersion GetVersion () const { return m_Version; }
 			void SetVersion (DatagramVersion version) { m_Version = version; }
-			
+
+			void DropSharedRoutingPath () { if (m_RoutingSession) m_RoutingSession->SetSharedRoutingPath (nullptr); }
+
 		struct Info
 		{
 			std::shared_ptr<const i2p::data::IdentHash> IBGW;
@@ -113,8 +116,8 @@ namespace datagram
 			i2p::data::IdentHash m_RemoteIdent;
 			std::shared_ptr<const i2p::data::LeaseSet> m_RemoteLeaseSet;
 			std::shared_ptr<i2p::garlic::GarlicRoutingSession> m_RoutingSession;
-			std::vector<std::shared_ptr<i2p::garlic::GarlicRoutingSession> > m_PendingRoutingSessions;
-			std::vector<std::shared_ptr<I2NPMessage> > m_SendQueue;
+			std::vector<std::weak_ptr<i2p::garlic::GarlicRoutingSession> > m_PendingRoutingSessions;
+			std::vector<std::shared_ptr<const I2NPMessage> > m_SendQueue;
 			uint64_t m_LastUse, m_LastFlush; // milliseconds
 			bool m_RequestingLS;
 			DatagramVersion m_Version;
@@ -125,7 +128,7 @@ namespace datagram
 	const size_t MAX_DATAGRAM_SIZE = 32768;
 	class DatagramDestination
 	{
-		typedef std::function<void (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort, 
+		typedef std::function<void (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort,
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options)> Receiver;
 		typedef std::function<void (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)> RawReceiver;
 
@@ -139,19 +142,19 @@ namespace datagram
 			// TODO: implement calls from other thread from SAM
 
 			std::shared_ptr<DatagramSession> GetSession(const i2p::data::IdentHash & ident);
-			void SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len, 
+			void SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
 				uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options = nullptr);
 			void SendRawDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len, uint16_t fromPort, uint16_t toPort);
 			void FlushSendQueue (std::shared_ptr<DatagramSession> session);
 
-			void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, 
+			void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort,
 			 	const uint8_t * buf, size_t len, uint8_t protocolType, i2p::garlic::ECIESX25519AEADRatchetSession * from);
 
-			void SetReceiver (const Receiver& receiver, uint16_t port);
-			void ResetReceiver (uint16_t port);
+			void SetReceiver (const Receiver& receiver, uint16_t port = 0);
+			void ResetReceiver (uint16_t port = 0);
 
-			void SetRawReceiver (const RawReceiver& receiver, uint16_t port);
-			void ResetRawReceiver (uint16_t port);
+			void SetRawReceiver (const RawReceiver& receiver, uint16_t port = 0);
+			void ResetRawReceiver (uint16_t port = 0);
 
 			std::shared_ptr<DatagramSession::Info> GetInfoForRemote(const i2p::data::IdentHash & remote);
 
@@ -161,6 +164,7 @@ namespace datagram
 		private:
 
 			std::shared_ptr<DatagramSession> ObtainSession(const i2p::data::IdentHash & ident);
+			std::shared_ptr<DatagramSession> FindSession(const i2p::data::IdentHash& ident) const;
 
 			std::shared_ptr<I2NPMessage> CreateDataMessage (const std::vector<std::pair<const uint8_t *, size_t> >& payloads,
 				uint16_t fromPort, uint16_t toPort, uint8_t protocolType, bool checksum = true);
@@ -180,8 +184,8 @@ namespace datagram
 
 			std::shared_ptr<i2p::client::ClientDestination> m_Owner;
 
-			std::mutex m_SessionsMutex;
-			std::map<i2p::data::IdentHash, DatagramSession_ptr > m_Sessions;
+			mutable std::mutex m_SessionsMutex;
+			std::unordered_map<i2p::data::IdentHash, DatagramSession_ptr > m_Sessions;
 
 			Receiver m_DefaultReceiver;
 			RawReceiver m_DefaultRawReceiver;

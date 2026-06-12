@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -219,7 +219,7 @@ namespace util
 	{
 		if (len < 2) return 0;
 		return FromBuffer (bufbe16toh (buf), buf + 2, len - 2) + 2;
-	}	
+	}
 
 	size_t Mapping::FromBuffer (size_t size, const uint8_t * buf, size_t len)
 	{
@@ -233,7 +233,7 @@ namespace util
 			{
 				LogPrint (eLogWarning, "Mapping: Param length ",  param.length (), " is too long");
 				break;
-			}	
+			}
 			if (buf[offset] != '=')
 			{
 				LogPrint (eLogWarning, "Mapping: Unexpected character ", buf[offset], " instead '=' after ", param);
@@ -247,7 +247,7 @@ namespace util
 			{
 				LogPrint (eLogWarning, "Mapping: Value length ",  param.length (), " is too long");
 				break;
-			}	
+			}
 			if (buf[offset] != ';')
 			{
 				LogPrint (eLogWarning, "Mapping: Unexpected character ", buf[offset], " instead ';' after ", value);
@@ -257,8 +257,8 @@ namespace util
 			m_Options.emplace (param, value);
 		}
 		return size;
-	}	
-	
+	}
+
 	std::string_view Mapping::ExtractString (const uint8_t * buf, size_t len)
 	{
 		uint8_t l = buf[0];
@@ -275,11 +275,11 @@ namespace util
 			size_t l = WriteOption (it.first, it.second, buf + offset, len - offset);
 			if (!l) break;
 			offset += l;
-		}	
+		}
 		htobe16buf (buf, offset - 2);
 		return offset;
-	}	
-	
+	}
+
 	size_t Mapping::WriteString (std::string_view str, uint8_t * buf, size_t len)
 	{
 		auto l = str.length ();
@@ -288,7 +288,7 @@ namespace util
 		buf[0] = l;
 		memcpy (buf + 1, str.data (), l);
 		return l + 1;
-	}	
+	}
 
 	size_t Mapping::WriteOption (std::string_view param, std::string_view value, uint8_t * buf, size_t len)
 	{
@@ -299,29 +299,62 @@ namespace util
 		offset += WriteString (value, buf + offset, len - offset);
 		buf[offset] = ';'; offset++;
 		return offset;
-	}	
-	
+	}
+
 	std::string_view Mapping::operator[](std::string_view param) const
 	{
 		auto it = m_Options.find (param);
 		if (it != m_Options.end ()) return it->second;
 		return std::string_view (); // empty string
-	}	
+	}
 
 	bool Mapping::Insert (std::string_view param, std::string_view value)
 	{
 		return m_Options.emplace (param, value).second;
-	}	
+	}
+
+	bool Mapping::Contains (std::string_view param) const
+	{
+#if __cplusplus >= 202002L // C++20
+		return m_Options.contains (param);
+#else
+		auto it = m_Options.find (param);
+		return it != m_Options.end ();
+#endif
+	}
 
 	void Mapping::CleanUp ()
 	{
 		if (!m_Options.empty ())
-		{	
+		{
 			decltype(m_Options) tmp;
 			m_Options.swap (tmp);
-		}	
-	}	
-	
+		}
+	}
+
+	bool Mapping::GetBoolParamValue (std::string_view s, bool& value)
+	{
+		bool ret = true;
+		value = false;
+		if (s == "true")
+			value = true;
+		else if (s == "false")
+			value = false;
+		else
+		{
+			int v = 0;
+			auto res = std::from_chars(s.data(), s.data() + s.size(), v);
+			if (res.ec == std::errc())
+				value = v;
+			else
+			{
+				LogPrint (eLogError, "Mapping: Unable to parse bool param value ", s, ": ",  std::make_error_code (res.ec).message ());
+				ret = false;
+			}
+		}
+		return ret;
+	}
+
 namespace net
 {
 #ifdef _WIN32
@@ -736,16 +769,16 @@ namespace net
 	boost::asio::ip::address_v6 GetYggdrasilAddress ()
 	{
 		return GetLocalIPV6Address ([](const uint8_t addr[16]) { return IsYggdrasilAddress (addr); });
-	}	
+	}
 
 	boost::asio::ip::address_v6 GetClearnetIPV6Address ()
 	{
 		return GetLocalIPV6Address ([](const uint8_t addr[16])
 			{
-				return (addr[0] & 0xF0) == 0x20; // 2000::/3
-			});	
-	}	
-	
+				return (addr[0] & 0xF0) == 0x20 || (addr[0] & 0xFC) == 0xFC; // 2000::/3 or FC00:/7
+			});
+	}
+
 	bool IsLocalAddress (const boost::asio::ip::address& addr)
 	{
 		auto mtu = // TODO: implement better
@@ -763,7 +796,7 @@ namespace net
 		if (host.is_unspecified ()) return false;
 		if (host.is_v4())
 		{
-			static const std::array reservedIPv4Ranges 
+			static const std::array reservedIPv4Ranges
 			{
 				address_pair_v4("0.0.0.0",      "0.255.255.255"),
 				address_pair_v4("10.0.0.0",     "10.255.255.255"),
@@ -789,7 +822,7 @@ namespace net
 		}
 		if (host.is_v6())
 		{
-			static std::array reservedIPv6Ranges 
+			static std::array reservedIPv6Ranges
 			{
 				address_pair_v6("64:ff9b::",  "64:ff9b:ffff:ffff:ffff:ffff:ffff:ffff"),  // NAT64
 				address_pair_v6("2001:db8::", "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff"),

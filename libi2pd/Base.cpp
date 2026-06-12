@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -27,7 +27,7 @@ namespace data
 	{
 		return T32;
 	}
-	
+
 	static void iT64Build(void);
 
 	/*
@@ -54,7 +54,7 @@ namespace data
 	{
 		return T64;
 	}
-	
+
 	/*
 	* Reverse Substitution Table (built in run time)
 	*/
@@ -74,9 +74,9 @@ namespace data
 	* Converts binary encoded data to BASE64 format.
 	*
 	*/
-	std::string ByteStreamToBase64 (// base64 encoded string 
-		const uint8_t * InBuffer, 	// Input buffer, binary data 
-	    size_t InCount 				// Number of bytes in the input buffer 
+	std::string ByteStreamToBase64 (// base64 encoded string
+		const uint8_t * InBuffer, 	// Input buffer, binary data
+	    size_t InCount 				// Number of bytes in the input buffer
 	)
 	{
 		unsigned char * ps;
@@ -97,7 +97,7 @@ namespace data
 		{
 			acc_1 = *ps++;
 			acc_2 = (acc_1 << 4) & 0x30;
-			acc_1 >>= 2;                 // base64 digit #1 
+			acc_1 >>= 2;                 // base64 digit #1
 			out.push_back (T64[acc_1]);
 			acc_1 = *ps++;
 			acc_2 |= acc_1 >> 4;         // base64 digit #2
@@ -137,8 +137,8 @@ namespace data
 		}
 
 		return out;
-	}	
-	
+	}
+
 	/*
 	*
 	* Base64ToByteStream
@@ -148,10 +148,10 @@ namespace data
 	* not properly padded, buffer of negative length is returned
 	*
 	*/
-	size_t Base64ToByteStream (		// Number of output bytes 
-		std::string_view base64Str,	// BASE64 encoded string  
-	    uint8_t * OutBuffer, 		// output buffer length 
-	    size_t len					// length of output buffer 
+	size_t Base64ToByteStream (		// Number of output bytes
+		std::string_view base64Str,	// BASE64 encoded string
+	    uint8_t * OutBuffer, 		// output buffer length
+	    size_t len					// length of output buffer
 	)
 	{
 		unsigned char * pd;
@@ -172,14 +172,14 @@ namespace data
 		if (pos == base64Str.npos) return 0;
 		outCount -= (base64Str.length () - pos - 1);
 		if (outCount > len) return 0;
-		
+
 		auto ps = base64Str.begin ();
 		pd = OutBuffer;
 		auto endOfOutBuffer = OutBuffer + outCount;
 		for (int i = 0; i < d.quot; i++)
 		{
-			acc_1 = iT64[int(*ps++)];
-			acc_2 = iT64[int(*ps++)];
+			acc_1 = iT64[uint8_t(*ps++)];
+			acc_2 = iT64[uint8_t(*ps++)];
 			acc_1 <<= 2;
 			acc_1 |= acc_2 >> 4;
 			*pd++ = acc_1;
@@ -187,20 +187,20 @@ namespace data
 				break;
 
 			acc_2 <<= 4;
-			acc_1 = iT64[int(*ps++)];
+			acc_1 = iT64[uint8_t(*ps++)];
 			acc_2 |= acc_1 >> 2;
 			*pd++ = acc_2;
 			if (pd >= endOfOutBuffer)
 				break;
 
-			acc_2 = iT64[int(*ps++)];
+			acc_2 = iT64[uint8_t(*ps++)];
 			acc_2 |= acc_1 << 6;
 			*pd++ = acc_2;
 		}
 
 		return outCount;
-	}	
-	
+	}
+
 	std::string ToBase64Standard (std::string_view in)
 	{
 		auto str = ByteStreamToBase64 ((const uint8_t *)in.data (), in.length ());
@@ -227,8 +227,8 @@ namespace data
 		int i;
 		isFirstTime = 0;
 		for ( i = 0; i < 256; i++ ) iT64[i] = -1;
-		for ( i = 0; i < 64; i++ ) iT64[(int)T64[i]] = i;
-		iT64[(int)P64] = 0;
+		for ( i = 0; i < 64; i++ ) iT64[(uint8_t)T64[i]] = i;
+		iT64[(uint8_t)P64] = 0;
 	}
 
 	size_t Base32ToByteStream (std::string_view base32Str, uint8_t * outBuf, size_t outLen)
@@ -256,8 +256,8 @@ namespace data
 			tmp <<= 5;
 		}
 		return ret;
-	}	
-	
+	}
+
 	std::string ByteStreamToBase32 (const uint8_t * inBuf, size_t len)
 	{
 		std::string out;
@@ -287,6 +287,6 @@ namespace data
 			out.push_back ((ind < 26) ? (ind + 'a') : ((ind - 26) + '2'));
 		}
 		return out;
-	}	
+	}
 }
 }

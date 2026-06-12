@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <boost/algorithm/string/predicate.hpp>
 
 namespace i2p
 {
@@ -23,6 +24,17 @@ namespace http
 {
 	constexpr std::string_view CRLF = "\r\n";         /**< HTTP line terminator */
 	constexpr std::string_view HTTP_EOH = "\r\n\r\n"; /**< HTTP end-of-headers mark */
+
+	// case-insensitive comparator for HTTP header names (RFC 7230)
+	struct CaseInsensitiveLess
+	{
+		using is_transparent = void;
+
+		bool operator() (std::string_view a, std::string_view b) const
+		{
+			return boost::ilexicographical_compare(a, b);
+		}
+	};
 
 	struct URL
 	{
@@ -66,11 +78,12 @@ namespace http
 
 	struct HTTPMsg
 	{
-		std::map<std::string, std::string> headers;
+		std::map<std::string, std::string, CaseInsensitiveLess> headers;
 
 		void add_header(const char *name, const std::string & value, bool replace = false);
 		void add_header(const char *name, const char *value, bool replace = false);
 		void del_header(const char *name);
+		std::string get_header(const std::string& name) const;
 
 		/** @brief Returns declared message length or -1 if unknown */
 		long int content_length() const;
@@ -160,7 +173,7 @@ namespace http
 	 * @param null If set to true - decode also %00 sequence, otherwise - skip
 	 * @return Decoded string
 	 */
-	std::string UrlDecode(std::string_view data, bool null = false);
+	std::string UrlDecode(std::string_view url, bool null = false);
 
 	/**
 	 * @brief Merge HTTP response content with Transfer-Encoding: chunked

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -10,8 +10,10 @@
 #define TUNNEL_GATEWAY_H__
 
 #include <inttypes.h>
+#include <array>
 #include <vector>
 #include <memory>
+#include <random>
 #include "I2NPProtocol.h"
 #include "TunnelBase.h"
 
@@ -38,7 +40,8 @@ namespace tunnel
 			std::vector<std::shared_ptr<const I2NPMessage> > m_TunnelDataMsgs;
 			std::shared_ptr<I2NPMessage> m_CurrentTunnelDataMsg;
 			size_t m_RemainingSize;
-			uint8_t * m_NonZeroRandomBuffer;
+			std::unique_ptr<std::array<uint8_t, TUNNEL_DATA_MAX_PAYLOAD_SIZE> > m_NonZeroRandomBuffer;
+			std::unique_ptr<std::mt19937> m_Rng;
 	};
 
 	class TunnelGateway

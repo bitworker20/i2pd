@@ -46,15 +46,29 @@ namespace client
 			void StatusHandler (std::ostringstream& results);
 			void NetDbKnownPeersHandler (std::ostringstream& results);
 			void NetDbActivePeersHandler (std::ostringstream& results);
+			void NetDbFloodfillsHandler (std::ostringstream& results);
+			void NetDbLeaseSetsHandler (std::ostringstream& results);
 			void NetStatusHandler (std::ostringstream& results);
+			void NetStatusV6Handler (std::ostringstream& results);
+			void NetErrorHandler (std::ostringstream& results);
+			void NetErrorV6Handler (std::ostringstream& results);
+			void NetTestingHandler (std::ostringstream& results);
+			void NetTestingV6Handler (std::ostringstream& results);
 			void TunnelsParticipatingHandler (std::ostringstream& results);
+			void TunnelsInboundHandler (std::ostringstream& results);
+			void TunnelsOutboundHandler (std::ostringstream& results);
 			void TunnelsSuccessRateHandler (std::ostringstream& results);
+			void TunnelsTotalSuccessRateHandler (std::ostringstream& results);
+			void TunnelsQueueHandler (std::ostringstream& results);
+			void TunnelsTBMQueueHandler (std::ostringstream& results);
 			void InboundBandwidth1S (std::ostringstream& results);
 			void InboundBandwidth15S (std::ostringstream& results);
 			void OutboundBandwidth1S (std::ostringstream& results);
 			void OutboundBandwidth15S (std::ostringstream& results);
+			void TransitBandwidth15S (std::ostringstream& results);
 			void NetTotalReceivedBytes (std::ostringstream& results);
 			void NetTotalSentBytes (std::ostringstream& results);
+			void NetTotalTransitBytes (std::ostringstream& results);
 
 			// NetworkSetting
 			typedef void (I2PControlHandlers::*NetworkSettingRequestHandler)(const std::string& value, std::ostringstream& results);

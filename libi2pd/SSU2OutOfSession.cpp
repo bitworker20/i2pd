@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024-2025, The PurpleI2P Project
+* Copyright (c) 2024-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -14,18 +14,18 @@ namespace i2p
 {
 namespace transport
 {
-	SSU2PeerTestSession::SSU2PeerTestSession (SSU2Server& server, uint64_t sourceConnID, uint64_t destConnID): 
-		SSU2Session (server, nullptr, nullptr, false), 
-		m_MsgNumReceived (0), m_NumResends (0),m_IsConnectedRecently (false), m_IsStatusChanged (false),
+	SSU2PeerTestSession::SSU2PeerTestSession (SSU2Server& server, uint64_t sourceConnID, uint64_t destConnID):
+		SSU2Session (server),
+		m_MsgNumReceived (0), m_NumResends (0), m_IsConnectedRecently (false), m_IsStatusChanged (false),
 		m_PeerTestResendTimer (server.GetService ())
 	{
 		if (!sourceConnID) sourceConnID = ~destConnID;
 		if (!destConnID) destConnID = ~sourceConnID;
 		SetSourceConnID (sourceConnID);
-		SetDestConnID (destConnID);	
-		SetState (eSSU2SessionStatePeerTest);	
+		SetDestConnID (destConnID);
+		SetState (eSSU2SessionStatePeerTest);
 		SetTerminationTimeout (SSU2_PEER_TEST_EXPIRATION_TIMEOUT);
-	}	
+	}
 
 	bool SSU2PeerTestSession::ProcessPeerTest (uint8_t * buf, size_t len)
 	{
@@ -63,14 +63,14 @@ namespace transport
 		HandlePayload (payload, len - 48);
 		SetIsDataReceived (false);
 		return true;
-	}	
+	}
 
 	void SSU2PeerTestSession::HandleAddress (const uint8_t * buf, size_t len)
 	{
 		if (!ExtractEndpoint (buf, len, m_OurEndpoint))
 			LogPrint (eLogWarning, "SSU2: Can't handle address block from peer test message");
-	}	
-		
+	}
+
 	void SSU2PeerTestSession::HandlePeerTest (const uint8_t * buf, size_t len)
 	{
 		// msgs 5-7
@@ -80,19 +80,19 @@ namespace transport
 		{
 			LogPrint (eLogDebug, "SSU2: PeerTest msg num ", msg, " received after ", m_MsgNumReceived, ". Ignored");
 			return;
-		}	
+		}
 		size_t offset = 3; // points to signed data after msg + code + flag
 		uint32_t nonce = bufbe32toh (buf + offset + 1); // 1 - ver
 		switch (msg) // msg
 		{
 			case 5: // Alice from Charlie 1
-			{	
+			{
 				if (htobe64 (((uint64_t)nonce << 32) | nonce) == GetSourceConnID ())
 				{
 					m_PeerTestResendTimer.cancel (); // cancel delayed msg 6 if any
-					if (GetServer ().IsForcedFirewalled (GetRemoteEndpoint ().address().is_v4())) 
+					if (GetServer ().IsForcedFirewalled (GetRemoteEndpoint ().address().is_v4()))
 						// we assume that msg 5 was not received if forced firewalled
-						return; 
+						return;
 					m_IsConnectedRecently = GetServer ().IsConnectedRecently (GetRemoteEndpoint ());
 					if (GetAddress ())
 					{
@@ -108,49 +108,51 @@ namespace transport
 				break;
 			}
 			case 6: // Charlie from Alice
-			{	
+			{
 				m_PeerTestResendTimer.cancel (); // no more msg 5 resends
 				if (GetAddress ())
 					SendPeerTest (7, buf + offset, len - offset);
 				else
 					LogPrint (eLogWarning, "SSU2: Unknown address for peer test 6");
+				GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
 				GetServer ().RequestRemoveSession (GetConnID ());
 				break;
-			}			
+			}
 			case 7: // Alice from Charlie 2
-			{	
+			{
 				m_PeerTestResendTimer.cancel (); // no more msg 6 resends
 				if (m_MsgNumReceived < 5 && m_OurEndpoint.port ()) // msg 5 was not received
 				{
 					if (m_OurEndpoint.address ().is_v4 ()) // ipv4
 					{
 						if (i2p::context.GetStatus () == eRouterStatusFirewalled)
-						{	
+						{
 						    if (m_OurEndpoint.port () != GetServer ().GetPort (true))
 								i2p::context.SetError (eRouterErrorSymmetricNAT);
 							else if (i2p::context.GetError () == eRouterErrorSymmetricNAT)
 								i2p::context.SetError (eRouterErrorNone);
 						}
-					}	
+					}
 					else
 					{
 						if (i2p::context.GetStatusV6 () == eRouterStatusFirewalled)
-						{	
+						{
 						    if (m_OurEndpoint.port () != GetServer ().GetPort (false))
 								i2p::context.SetErrorV6 (eRouterErrorSymmetricNAT);
 							else if (i2p::context.GetErrorV6 () == eRouterErrorSymmetricNAT)
 								i2p::context.SetErrorV6 (eRouterErrorNone);
 						}
-					}	
-				}	
-				GetServer ().RequestRemoveSession (GetConnID ());	
+					}
+				}
+				GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
+				GetServer ().RequestRemoveSession (GetConnID ());
 				break;
-			}	
-			default:	
+			}
+			default:
 				LogPrint (eLogWarning, "SSU2: PeerTest unexpected msg num ", msg);
 				return;
-		}	
-		m_MsgNumReceived = msg;	
+		}
+		m_MsgNumReceived = msg;
 	}
 
 	void SSU2PeerTestSession::SendPeerTest (uint8_t msg)
@@ -163,7 +165,7 @@ namespace transport
 		header.h.connID = GetDestConnID (); // dest id
 		RAND_bytes (header.buf + 8, 4); // random packet num
 		header.h.type = eSSU2PeerTest;
-		header.h.flags[0] = 2; // ver
+		header.h.flags[0] = 2; // ver, always 2 even for post-quantum
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
 		header.h.flags[2] = 0; // flag
 		memcpy (h, header.buf, 16);
@@ -190,7 +192,7 @@ namespace transport
 		// send
 		GetServer ().Send (header.buf, 16, h + 16, 16, payload, payloadSize, GetRemoteEndpoint ());
 		UpdateNumSentBytes (payloadSize + 32);
-	}	
+	}
 
 	void SSU2PeerTestSession::SendPeerTest (uint8_t msg, const uint8_t * signedData, size_t signedDataLen, bool delayed)
 	{
@@ -200,32 +202,32 @@ namespace transport
 		// schedule resend for msgs 5 or 6
 		if (msg == 5 || msg == 6)
 			ScheduleResend (msg);
-	}	
-		
-	void SSU2PeerTestSession::SendPeerTest (uint8_t msg, const uint8_t * signedData, size_t signedDataLen, 
+	}
+
+	void SSU2PeerTestSession::SendPeerTest (uint8_t msg, const uint8_t * signedData, size_t signedDataLen,
 		std::shared_ptr<const i2p::data::RouterInfo::Address> addr, bool delayed)
 	{
 		if (!addr) return;
 		SetAddress (addr);
-		SendPeerTest (msg, signedData, signedDataLen, delayed);	
-	}	
+		SendPeerTest (msg, signedData, signedDataLen, delayed);
+	}
 
 	void SSU2PeerTestSession::Connect ()
 	{
 		LogPrint (eLogError, "SSU2: Can't connect peer test session");
-	}	
+	}
 
 	bool SSU2PeerTestSession::ProcessFirstIncomingMessage (uint64_t connID, uint8_t * buf, size_t len)
 	{
 		LogPrint (eLogError, "SSU2: Can't handle incoming message in peer test session");
 		return false;
-	}	
+	}
 
 	void SSU2PeerTestSession::ScheduleResend (uint8_t msg)
 	{
 		if (m_NumResends < SSU2_PEER_TEST_MAX_NUM_RESENDS)
 		{
-			m_PeerTestResendTimer.expires_from_now (boost::posix_time::milliseconds(
+			m_PeerTestResendTimer.expires_after (std::chrono::milliseconds(
 				SSU2_PEER_TEST_RESEND_INTERVAL + GetServer ().GetRng ()() % SSU2_PEER_TEST_RESEND_INTERVAL_VARIANCE));
 			std::weak_ptr<SSU2PeerTestSession> s(std::static_pointer_cast<SSU2PeerTestSession>(shared_from_this ()));
 			m_PeerTestResendTimer.async_wait ([s, msg](const boost::system::error_code& ecode)
@@ -233,19 +235,19 @@ namespace transport
 					if (ecode != boost::asio::error::operation_aborted)
 					{
 						auto s1 = s.lock ();
-						if (s1) 
+						if (s1)
 						{
-							if (msg > s1->m_MsgNumReceived) 
-							{	
+							if (msg > s1->m_MsgNumReceived)
+							{
 								s1->SendPeerTest (msg);
 								s1->m_NumResends++;
 								s1->ScheduleResend (msg);
-							}	
-						}	
-					}	
+							}
+						}
+					}
 				});
-		}	
-	}	
+		}
+	}
 
 	SSU2HolePunchSession::SSU2HolePunchSession (SSU2Server& server, uint32_t nonce,
 		const boost::asio::ip::udp::endpoint& remoteEndpoint,
@@ -257,12 +259,16 @@ namespace transport
 		uint64_t destConnID = htobe64 (((uint64_t)nonce << 32) | nonce); // dest id
 		uint64_t sourceConnID = ~destConnID;
 		SetSourceConnID (sourceConnID);
-		SetDestConnID (destConnID);	
+		SetDestConnID (destConnID);
 		SetState (eSSU2SessionStateHolePunch);
 		SetRemoteEndpoint (remoteEndpoint);
 		SetAddress (addr);
-		SetTerminationTimeout (SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT);	
-	}	
+#if OPENSSL_PQ
+		if (server.GetVersion () > 2) // we support post quantum in config
+			SetVersion (addr->v);
+#endif
+		SetTerminationTimeout (SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT);
+	}
 
 	void SSU2HolePunchSession::SendHolePunch ()
 	{
@@ -276,7 +282,7 @@ namespace transport
 		header.h.connID = GetDestConnID (); // dest id
 		RAND_bytes (header.buf + 8, 4); // random packet num
 		header.h.type = eSSU2HolePunch;
-		header.h.flags[0] = 2; // ver
+		header.h.flags[0] = GetVersion (); // ver
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
 		header.h.flags[2] = 0; // flag
 		memcpy (h, header.buf, 16);
@@ -288,12 +294,12 @@ namespace transport
 		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500)/1000);
 		size_t payloadSize = 7;
 		payloadSize += CreateAddressBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize, ep);
-		// relay response block	
+		// relay response block
 		if (payloadSize + m_RelayResponseBlock.size () < GetMaxPayloadSize ())
-		{	
+		{
 			memcpy (payload + payloadSize, m_RelayResponseBlock.data (), m_RelayResponseBlock.size ());
 			payloadSize += m_RelayResponseBlock.size ();
-		}	
+		}
 		payloadSize += CreatePaddingBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize);
 		// encrypt
 		uint8_t n[12];
@@ -307,20 +313,20 @@ namespace transport
 		// send
 		GetServer ().Send (header.buf, 16, h + 16, 16, payload, payloadSize, ep);
 		UpdateNumSentBytes (payloadSize + 32);
-	}	
+	}
 
 	void SSU2HolePunchSession::SendHolePunch (const uint8_t * relayResponseBlock, size_t relayResponseBlockLen)
 	{
 		m_RelayResponseBlock.assign (relayResponseBlock, relayResponseBlock + relayResponseBlockLen);
 		SendHolePunch ();
 		ScheduleResend ();
-	}	
+	}
 
 	void SSU2HolePunchSession::ScheduleResend ()
 	{
 		if (m_NumResends < SSU2_HOLE_PUNCH_MAX_NUM_RESENDS)
 		{
-			m_HolePunchResendTimer.expires_from_now (boost::posix_time::milliseconds(
+			m_HolePunchResendTimer.expires_after (std::chrono::milliseconds(
 				SSU2_HOLE_PUNCH_RESEND_INTERVAL + GetServer ().GetRng ()() % SSU2_HOLE_PUNCH_RESEND_INTERVAL_VARIANCE));
 			std::weak_ptr<SSU2HolePunchSession> s(std::static_pointer_cast<SSU2HolePunchSession>(shared_from_this ()));
 			m_HolePunchResendTimer.async_wait ([s](const boost::system::error_code& ecode)
@@ -328,21 +334,21 @@ namespace transport
 					if (ecode != boost::asio::error::operation_aborted)
 					{
 						auto s1 = s.lock ();
-						if (s1 && s1->GetState () == eSSU2SessionStateHolePunch) 
+						if (s1 && s1->GetState () == eSSU2SessionStateHolePunch)
 						{
 							s1->SendHolePunch ();
 							s1->m_NumResends++;
-							s1->ScheduleResend ();	
-						}	
-					}	
+							s1->ScheduleResend ();
+						}
+					}
 				});
-		}	
+		}
 	}
 
 	bool SSU2HolePunchSession::ProcessFirstIncomingMessage (uint64_t connID, uint8_t * buf, size_t len)
 	{
 		m_HolePunchResendTimer.cancel ();
 		return SSU2Session::ProcessFirstIncomingMessage (connID, buf, len);
-	}	
+	}
 }
 }

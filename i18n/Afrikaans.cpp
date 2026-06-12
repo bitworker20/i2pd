@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, The PurpleI2P Project
+* Copyright (c) 2021-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -34,8 +34,12 @@ namespace afrikaans // language namespace
 
 	static const LocaleStrings strings
 	{
+		{"%.2f KiB", "%.2f KiB"},
+		{"%.2f MiB", "%.2f MiB"},
+		{"%.2f GiB", "%.2f GiB"},
 		{"failed", "Het misluk"},
 		{"unknown", "onbekend"},
+		{"Main page", "Hoof Blad"},
 		{"Tunnels", "Tonnels"},
 		{"I2P tunnels", "I2P tonnels"},
 		{"SAM sessions", "SAM sessies"},
@@ -43,13 +47,13 @@ namespace afrikaans // language namespace
 		{"Testing", "Besig om te toets"},
 		{"Firewalled", "Vuurmuur'd"},
 		{"Unknown", "Onbekend"},
-		{"Error", "Fout"},
 		{"Offline", "Aflyn"},
 		{"Uptime", "Optyd"},
 		{"Network status", "Netwerk status"},
 		{"Network status v6", "Netwerk status v6"},
 		{"Family", "Familie"},
 		{"Received", "Ontvang"},
+		{"%.2f KiB/s", "%.2f KiB/s"},
 		{"Sent", "Gestuur"},
 		{"Hidden content. Press on text to see.", "Hidden content. Druk om te sien."},
 		{"Router Ident", "Router Ident"},
@@ -61,7 +65,6 @@ namespace afrikaans // language namespace
 		{"Description", "Beskrywing"},
 		{"Submit", "Stuur"},
 		{"Proxy error", "Proxy-fout"},
-		{"Host", "Gasheer"},
 		{"", ""},
 	};
 

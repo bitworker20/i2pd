@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -39,7 +39,7 @@ namespace tunnel
 			void SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg) override;
 			void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage>&& tunnelMsg) override;
 			void EncryptTunnelMsg (std::shared_ptr<const I2NPMessage> in, std::shared_ptr<I2NPMessage> out) override;
-		
+
 		private:
 
 			i2p::crypto::AESKey m_LayerKey, m_IVKey;
@@ -83,7 +83,7 @@ namespace tunnel
 			void FlushTunnelDataMsgs () override;
 			size_t GetNumTransmittedBytes () const override { return m_Gateway.GetNumSentBytes (); };
 			std::string GetNextPeerName () const override;
-			
+
 		private:
 
 			std::mutex m_SendMutex;
@@ -97,15 +97,15 @@ namespace tunnel
 			TransitTunnelEndpoint (uint32_t receiveTunnelID,
 				const i2p::data::IdentHash& nextIdent, uint32_t nextTunnelID,
 				const i2p::crypto::AESKey& layerKey, const i2p::crypto::AESKey& ivKey):
-				TransitTunnel (receiveTunnelID, nextIdent, nextTunnelID, layerKey, ivKey) {}; 
+				TransitTunnel (receiveTunnelID, nextIdent, nextTunnelID, layerKey, ivKey) {};
 
 			void Cleanup () override;
-		
+
 			void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage>&& tunnelMsg) override;
 			void FlushTunnelDataMsgs () override;
 			size_t GetNumTransmittedBytes () const override { return m_Endpoint ? m_Endpoint->GetNumReceivedBytes () : 0; }
 			std::string GetNextPeerName () const override;
-			
+
 		private:
 
 			std::mutex m_HandleMutex;
@@ -117,20 +117,21 @@ namespace tunnel
 		const i2p::crypto::AESKey& layerKey, const i2p::crypto::AESKey& ivKey,
 		bool isGateway, bool isEndpoint);
 
-	
+
 	const int TRANSIT_TUNNELS_QUEUE_WAIT_INTERVAL = 10; // in seconds
-		
+	const int TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE = 100;
+
 	class TransitTunnels
-	{	
+	{
 		public:
 
 			TransitTunnels ();
 			~TransitTunnels ();
-			
+
 			void Start ();
 			void Stop ();
 			void PostTransitTunnelBuildMsg  (std::shared_ptr<I2NPMessage>&& msg);
-			
+
 			size_t GetNumTransitTunnels () const { return m_TransitTunnels.size (); }
 			int GetTransitTunnelsExpirationTimeout ();
 
@@ -144,7 +145,7 @@ namespace tunnel
 			bool HandleBuildRequestRecords (int num, uint8_t * records, uint8_t * clearText);
 
 			void Run ();
-			
+
 		private:
 
 			volatile bool m_IsRunning;
@@ -152,7 +153,7 @@ namespace tunnel
 			std::list<std::shared_ptr<TransitTunnel> > m_TransitTunnels;
 			i2p::util::Queue<std::shared_ptr<I2NPMessage> > m_TunnelBuildMsgQueue;
 			std::mt19937 m_Rng;
-			
+
 		public:
 
 			// for HTTP only

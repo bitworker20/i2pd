@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -32,55 +32,56 @@ namespace client
 {
 	const size_t BOB_COMMAND_BUFFER_SIZE = 1024;
 	const int BOB_PING_TIMEOUT = 8000; // in milliseconds
-	
-	const char BOB_COMMAND_ZAP[] = "zap";
-	const char BOB_COMMAND_QUIT[] = "quit";
-	const char BOB_COMMAND_START[] = "start";
-	const char BOB_COMMAND_STOP[] = "stop";
-	const char BOB_COMMAND_SETNICK[] = "setnick";
-	const char BOB_COMMAND_GETNICK[] = "getnick";
-	const char BOB_COMMAND_NEWKEYS[] = "newkeys";
-	const char BOB_COMMAND_GETKEYS[] = "getkeys";
-	const char BOB_COMMAND_SETKEYS[] = "setkeys";
-	const char BOB_COMMAND_GETDEST[] = "getdest";
-	const char BOB_COMMAND_OUTHOST[] = "outhost";
-	const char BOB_COMMAND_OUTPORT[] = "outport";
-	const char BOB_COMMAND_INHOST[] = "inhost";
-	const char BOB_COMMAND_INPORT[] = "inport";
-	const char BOB_COMMAND_QUIET[] = "quiet";
-	const char BOB_COMMAND_LOOKUP[] = "lookup";
-	const char BOB_COMMAND_LOOKUP_LOCAL[] = "lookuplocal";
-	const char BOB_COMMAND_PING[] = "ping";
-	const char BOB_COMMAND_CLEAR[] = "clear";
-	const char BOB_COMMAND_LIST[] = "list";
-	const char BOB_COMMAND_OPTION[] = "option";
-	const char BOB_COMMAND_STATUS[] = "status";
-	const char BOB_COMMAND_HELP[] = "help";
-	const char BOB_COMMAND_SETTUNNELTYPE[] = "settunneltype";
 
-	
-	const char BOB_HELP_ZAP[] = "zap - Shuts down BOB.";
-	const char BOB_HELP_QUIT[] = "quit - Quits this session with BOB.";
-	const char BOB_HELP_START[] = "start - Starts the current nicknamed tunnel.";
-	const char BOB_HELP_STOP[] = "stop - Stops the current nicknamed tunnel.";
-	const char BOB_HELP_SETNICK[] = "setnick <NICKNAME> - Creates a new nickname.";
-	const char BOB_HELP_GETNICK[] = "getnick <TUNNELNAME> - Sets the nickname from the database.";
-	const char BOB_HELP_NEWKEYS[] = "newkeys - Generate a new keypair for the current nickname.";
-	const char BOB_HELP_GETKEYS[] = "getkeys - Return the keypair for the current nickname.";
-	const char BOB_HELP_SETKEYS[] = "setkeys <BASE64_KEYPAIR> - Sets the keypair for the current nickname.";
-	const char BOB_HELP_GETDEST[] = "getdest - Return the destination for the current nickname.";
-	const char BOB_HELP_OUTHOST[] = "outhost <HOSTNAME|IP> - Set the outhound hostname or IP.";
-	const char BOB_HELP_OUTPORT[] = "outport <PORT_NUMBER> - Set the outbound port that nickname contacts.";
-	const char BOB_HELP_INHOST[] = "inhost <HOSTNAME|IP> - Set the inbound hostname or IP.";
-	const char BOB_HELP_INPORT[] = "inport <PORT_NUMBER> - Set the inbound port number nickname listens on.";
-	const char BOB_HELP_QUIET[] = "quiet <True|False> - Whether to send the incoming destination.";
-	const char BOB_HELP_LOOKUP[] = "lookup <I2P_HOSTNAME> - Look up an I2P hostname.";
-	const char BOB_HELP_CLEAR[] = "clear - Clear the current nickname out of the list.";
-	const char BOB_HELP_LIST[] = "list - List all tunnels.";
-	const char BOB_HELP_OPTION[] = "option <KEY>=<VALUE> - Set an option. NOTE: Don't use any spaces.";
-	const char BOB_HELP_STATUS[] = "status <NICKNAME> - Display status of a nicknamed tunnel.";
-	const char BOB_HELP_HELP [] = "help <COMMAND> - Get help on a command.";
-	const char BOB_HELP_SETTUNNELTYPE[] = "settunneltype <socks|httpproxy> - Sets socks or http proxy tunnel type.";
+	constexpr std::string_view BOB_COMMAND_ZAP { "zap" };
+	constexpr std::string_view BOB_COMMAND_QUIT { "quit" };
+	constexpr std::string_view BOB_COMMAND_START { "start" };
+	constexpr std::string_view BOB_COMMAND_STOP { "stop" };
+	constexpr std::string_view BOB_COMMAND_SETNICK { "setnick" };
+	constexpr std::string_view BOB_COMMAND_GETNICK { "getnick" };
+	constexpr std::string_view BOB_COMMAND_NEWKEYS { "newkeys" };
+	constexpr std::string_view BOB_COMMAND_GETKEYS { "getkeys" };
+	constexpr std::string_view BOB_COMMAND_SETKEYS { "setkeys" };
+	constexpr std::string_view BOB_COMMAND_GETDEST { "getdest" };
+	constexpr std::string_view BOB_COMMAND_OUTHOST { "outhost" };
+	constexpr std::string_view BOB_COMMAND_OUTPORT { "outport" };
+	constexpr std::string_view BOB_COMMAND_INHOST { "inhost" };
+	constexpr std::string_view BOB_COMMAND_INPORT { "inport" };
+	constexpr std::string_view BOB_COMMAND_QUIET { "quiet" };
+	constexpr std::string_view BOB_COMMAND_LOOKUP { "lookup" };
+	constexpr std::string_view BOB_COMMAND_LOOKUP_LOCAL { "lookuplocal" };
+	constexpr std::string_view BOB_COMMAND_PING { "ping" };
+	constexpr std::string_view BOB_COMMAND_CLEAR { "clear" };
+	constexpr std::string_view BOB_COMMAND_LIST { "list" };
+	constexpr std::string_view BOB_COMMAND_OPTION { "option" };
+	constexpr std::string_view BOB_COMMAND_STATUS { "status" };
+	constexpr std::string_view BOB_COMMAND_HELP { "help" };
+	constexpr std::string_view BOB_COMMAND_SETTUNNELTYPE {"settunneltype" };
+
+	constexpr std::string_view BOB_HELP_ZAP { "zap - Shuts down BOB." };
+	constexpr std::string_view BOB_HELP_QUIT { "quit - Quits this session with BOB." };
+	constexpr std::string_view BOB_HELP_START { "start - Starts the current nicknamed tunnel." };
+	constexpr std::string_view BOB_HELP_STOP { "stop - Stops the current nicknamed tunnel." };
+	constexpr std::string_view BOB_HELP_SETNICK { "setnick <NICKNAME> - Creates a new nickname." };
+	constexpr std::string_view BOB_HELP_GETNICK { "getnick <TUNNELNAME> - Sets the nickname from the database." };
+	constexpr std::string_view BOB_HELP_NEWKEYS { "newkeys - Generate a new keypair for the current nickname." };
+	constexpr std::string_view BOB_HELP_GETKEYS { "getkeys - Return the keypair for the current nickname." };
+	constexpr std::string_view BOB_HELP_SETKEYS { "setkeys <BASE64_KEYPAIR> - Sets the keypair for the current nickname." };
+	constexpr std::string_view BOB_HELP_GETDEST { "getdest - Return the destination for the current nickname." };
+	constexpr std::string_view BOB_HELP_OUTHOST { "outhost <HOSTNAME|IP> - Set the outhound hostname or IP." };
+	constexpr std::string_view BOB_HELP_OUTPORT { "outport <PORT_NUMBER> - Set the outbound port that nickname contacts." };
+	constexpr std::string_view BOB_HELP_INHOST { "inhost <HOSTNAME|IP> - Set the inbound hostname or IP." };
+	constexpr std::string_view BOB_HELP_INPORT { "inport <PORT_NUMBER> - Set the inbound port number nickname listens on." };
+	constexpr std::string_view BOB_HELP_QUIET { "quiet <True|False> - Whether to send the incoming destination." };
+	constexpr std::string_view BOB_HELP_LOOKUP { "lookup <I2P_HOSTNAME> - Look up an I2P hostname in the network." };
+	constexpr std::string_view BOB_HELP_LOOKUP_LOCAL { "lookuplocal <I2P_HOSTNAME> - Look up an I2P hostname in local netDb only." };
+	constexpr std::string_view BOB_HELP_CLEAR { "clear - Clear the current nickname out of the list." };
+	constexpr std::string_view BOB_HELP_LIST { "list - List all tunnels." };
+	constexpr std::string_view BOB_HELP_OPTION { "option <KEY>=<VALUE> - Set an option. NOTE: Don't use any spaces." };
+	constexpr std::string_view BOB_HELP_STATUS { "status <NICKNAME> - Display status of a nicknamed tunnel." };
+	constexpr std::string_view BOB_HELP_SETTUNNELTYPE { "settunneltype <socks|httpproxy> - Sets socks or http proxy tunnel type." };
+	constexpr std::string_view BOB_HELP_PING { "ping <I2P_HOSTNAME> - Send ping to I2P Hostname. Responds with pong or timeout." };
+	constexpr std::string_view BOB_HELP_HELP { "help <COMMAND> - Get help on a command." };
 
 	class BOBI2PTunnelIncomingConnection: public I2PTunnelConnection
 	{
@@ -93,12 +94,12 @@ namespace client
 		protected:
 
 			void Established () override;
-		
+
 		private:
 
 			bool m_IsQuiet; // don't send destination
 	};
-	
+
 	class BOBI2PTunnel: public I2PService
 	{
 		public:
@@ -262,7 +263,7 @@ namespace client
 			void BuildStatusLine(bool currentTunnel, std::shared_ptr<BOBDestination> destination, std::string &out);
 
 			void SendPing (std::shared_ptr<const i2p::data::LeaseSet> ls);
-			
+
 		private:
 
 			BOBCommandChannel& m_Owner;
@@ -272,7 +273,7 @@ namespace client
 			std::string m_Nickname, m_InHost, m_OutHost;
 			uint16_t m_InPort, m_OutPort;
 			i2p::data::PrivateKeys m_Keys;
-			std::map<std::string, std::string> m_Options;
+			i2p::util::Mapping m_Options;
 			std::shared_ptr<BOBDestination> m_CurrentDestination;
 
 			enum class TunnelType
@@ -280,7 +281,7 @@ namespace client
 				SOCKS = 0,
 				HTTP_PROXY = 1
 			};
-			std::optional<TunnelType> m_tunnelType; 
+			std::optional<TunnelType> m_tunnelType;
 	};
 	typedef void (BOBCommandSession::*BOBCommandHandler)(const char * operand, size_t len);
 
@@ -311,8 +312,8 @@ namespace client
 
 			boost::asio::ip::tcp::acceptor m_Acceptor;
 			std::map<std::string, std::shared_ptr<BOBDestination> > m_Destinations;
-			std::map<std::string, BOBCommandHandler> m_CommandHandlers;
-			std::map<std::string, std::string> m_HelpStrings;
+			std::map<std::string_view, BOBCommandHandler> m_CommandHandlers;
+			std::map<std::string_view, std::string_view> m_HelpStrings;
 			std::map<std::string, std::unique_ptr<I2PService>> m_proxy;
 
 		public:

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -15,6 +15,7 @@
 // Use global placeholders from boost introduced when local_time.hpp is loaded
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include "FS.h"
 #include "Log.h"
@@ -29,24 +30,24 @@ namespace i2p
 namespace client
 {
 	I2PControlService::I2PControlService (const std::string& address, int port):
-		m_IsRunning (false),	
+		m_IsRunning (false),
 		m_SSLContext (boost::asio::ssl::context::sslv23),
 		m_ShutdownTimer (m_Service)
 	{
-		if (port)		
+		if (port)
 			m_Acceptor = std::make_unique<boost::asio::ip::tcp::acceptor>(m_Service,
 				boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(address), port));
 		else
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-		{		
+		{
 			std::remove (address.c_str ());	// just in case
 			m_LocalAcceptor = std::make_unique<boost::asio::local::stream_protocol::acceptor>(m_Service,
-				boost::asio::local::stream_protocol::endpoint(address));	
-		}	
+				boost::asio::local::stream_protocol::endpoint(address));
+		}
 #else
 			LogPrint(eLogError, "I2PControl: Local sockets are not supported");
-#endif				
-				
+#endif
+
 		i2p::config::GetOption("i2pcontrol.password", m_Password);
 
 		// certificate / keys
@@ -57,29 +58,29 @@ namespace client
 			i2pcp_crt = i2p::fs::DataDirPath(i2pcp_crt);
 		if (i2pcp_key.at(0) != '/')
 			i2pcp_key = i2p::fs::DataDirPath(i2pcp_key);
-		if (!i2p::fs::Exists (i2pcp_crt) || !i2p::fs::Exists (i2pcp_key)) 
+		if (!i2p::fs::Exists (i2pcp_crt) || !i2p::fs::Exists (i2pcp_key))
 		{
 			LogPrint (eLogInfo, "I2PControl: Creating new certificate for control connection");
 			CreateCertificate (i2pcp_crt.c_str(), i2pcp_key.c_str());
-		} 
-		else 
+		}
+		else
 			LogPrint(eLogDebug, "I2PControl: Using cert from ", i2pcp_crt);
 		m_SSLContext.set_options (boost::asio::ssl::context::default_workarounds | boost::asio::ssl::context::no_sslv2 | boost::asio::ssl::context::single_dh_use);
 		boost::system::error_code ec;
 		m_SSLContext.use_certificate_file (i2pcp_crt, boost::asio::ssl::context::pem, ec);
-		if (!ec)		
+		if (!ec)
 			m_SSLContext.use_private_key_file (i2pcp_key, boost::asio::ssl::context::pem, ec);
 		if (ec)
 		{
 			LogPrint (eLogInfo, "I2PControl: Failed to load ceritifcate: ", ec.message (), ". Recreating");
 			CreateCertificate (i2pcp_crt.c_str(), i2pcp_key.c_str());
 			m_SSLContext.use_certificate_file (i2pcp_crt, boost::asio::ssl::context::pem, ec);
-			if (!ec)		
+			if (!ec)
 				m_SSLContext.use_private_key_file (i2pcp_key, boost::asio::ssl::context::pem, ec);
-			if (ec) 
+			if (ec)
 				// give up
 				LogPrint (eLogError, "I2PControl: Can't load certificates");
-		}	
+		}
 
 		// handlers
 		m_MethodHandlers["Authenticate"]       = &I2PControlService::AuthenticateHandler;
@@ -121,13 +122,13 @@ namespace client
 			m_IsRunning = false;
 			if (m_Acceptor) m_Acceptor->cancel ();
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-			if (m_LocalAcceptor) 
+			if (m_LocalAcceptor)
 			{
 				auto path = m_LocalAcceptor->local_endpoint().path();
 				m_LocalAcceptor->cancel ();
 				std::remove (path.c_str ());
-			}	
-#endif			
+			}
+#endif
 			m_Service.stop ();
 			if (m_Thread)
 			{
@@ -154,14 +155,14 @@ namespace client
 	void I2PControlService::Accept ()
 	{
 		if (m_Acceptor)
-		{	
+		{
 			auto newSocket = std::make_shared<boost::asio::ssl::stream<boost::asio::ip::tcp::socket> > (m_Service, m_SSLContext);
 			m_Acceptor->async_accept (newSocket->lowest_layer(),
 				[this, newSocket](const boost::system::error_code& ecode)
 				{
 					HandleAccepted (ecode, newSocket);
-				});		
-		}	
+				});
+		}
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 		else if (m_LocalAcceptor)
 		{
@@ -170,40 +171,40 @@ namespace client
 				[this, newSocket](const boost::system::error_code& ecode)
 				{
 					HandleAccepted (ecode, newSocket);
-				});		
-		}	
-#endif		
+				});
+		}
+#endif
 	}
 
-	template<typename ssl_socket> 
+	template<typename ssl_socket>
 	void I2PControlService::HandleAccepted (const boost::system::error_code& ecode,
 		std::shared_ptr<ssl_socket> newSocket)
 	{
 		if (ecode != boost::asio::error::operation_aborted)
 			Accept ();
 
-		if (ecode) 
+		if (ecode)
 		{
 			LogPrint (eLogError, "I2PControl: Accept error: ", ecode.message ());
 			return;
 		}
 		LogPrint (eLogDebug, "I2PControl: New request from ", newSocket->lowest_layer ().remote_endpoint ());
 		Handshake (newSocket);
-	}	
-		
+	}
+
 	template<typename ssl_socket>
 	void I2PControlService::Handshake (std::shared_ptr<ssl_socket> socket)
 	{
 		socket->async_handshake(boost::asio::ssl::stream_base::server,
 			[this, socket](const boost::system::error_code& ecode)
 		    {
-				if (ecode) 
+				if (ecode)
 				{
 					LogPrint (eLogError, "I2PControl: Handshake error: ", ecode.message ());
 					return;
 				}
 				ReadRequest (socket);
-			});			                        
+			});
 	}
 
 	template<typename ssl_socket>
@@ -247,7 +248,7 @@ namespace client
 					{
 						std::getline(ss, header);
 						auto colon = header.find (':');
-						if (colon != std::string::npos && header.substr (0, colon) == "Content-Length")
+						if (colon != std::string::npos && boost::iequals (header.substr (0, colon), "Content-Length"))
 							contentLength = std::stoi (header.substr (colon + 1));
 					}
 					if (ss.eof ())
@@ -256,10 +257,13 @@ namespace client
 						return; // TODO:
 					}
 					std::streamoff rem = contentLength + ss.tellg () - bytes_transferred; // more bytes to read
-					if (rem > 0)
+					while (rem > 0) // read in chunks to prevent buffer overflow
 					{
-						bytes_transferred = boost::asio::read (*socket, boost::asio::buffer (buf->data (), rem));
+						size_t toRead = std::min ((size_t)rem, buf->size ()); // don't exceed buffer size
+						bytes_transferred = boost::asio::read (*socket, boost::asio::buffer (buf->data (), toRead));
+						if (bytes_transferred == 0) break;
 						ss.write (buf->data (), bytes_transferred);
+						rem -= bytes_transferred;
 					}
 				}
 				std::ostringstream response;
@@ -273,14 +277,14 @@ namespace client
 				{
 					response << "{\"id\":" << id << ",\"result\":{";
 					(this->*(it->second))(pt.get_child ("params"), response);
-					response << "},\"jsonrpc\":\"2.0\"}";
+					response << "},\"jsonrpc\":\"2.0\"}\n";
 				}
 				else
 				{
 					LogPrint (eLogWarning, "I2PControl: Unknown method ", method);
 					response << "{\"id\":null,\"error\":";
 					response << "{\"code\":-32601,\"message\":\"Method not found\"},";
-					response << "\"jsonrpc\":\"2.0\"}";
+					response << "\"jsonrpc\":\"2.0\"}\n";
 				}
 				SendResponse (socket, buf, response, isHtml);
 			}
@@ -290,7 +294,7 @@ namespace client
 				std::ostringstream response;
 				response << "{\"id\":null,\"error\":";
 				response << "{\"code\":-32700,\"message\":\"" << ex.what () << "\"},";
-				response << "\"jsonrpc\":\"2.0\"}";
+				response << "\"jsonrpc\":\"2.0\"}\n";
 				SendResponse (socket, buf, response, isHtml);
 			}
 			catch (...)
@@ -327,7 +331,7 @@ namespace client
 		    {
 				if (ecode)
 					LogPrint (eLogError, "I2PControl: Write error: ", ecode.message ());
-			});	
+			});
 	}
 
 // handlers
@@ -390,7 +394,7 @@ namespace client
 		{
 			LogPrint (eLogDebug, "I2PControl: RouterManager request: ", it->first);
 			auto it1 = m_RouterManagerHandlers.find (it->first);
-			if (it1 != m_RouterManagerHandlers.end ()) 
+			if (it1 != m_RouterManagerHandlers.end ())
 			{
 				if (it != params.begin ()) results << ",";
 				(this->*(it1->second))(results);
@@ -404,7 +408,7 @@ namespace client
 	{
 		LogPrint (eLogInfo, "I2PControl: Shutdown requested");
 		InsertParam (results, "Shutdown", "");
-		m_ShutdownTimer.expires_from_now (boost::posix_time::seconds(1)); // 1 second to make sure response has been sent
+		m_ShutdownTimer.expires_after (std::chrono::seconds(1)); // 1 second to make sure response has been sent
 		m_ShutdownTimer.async_wait (
 			[](const boost::system::error_code& ecode)
 			{
@@ -418,7 +422,7 @@ namespace client
 		int timeout = i2p::tunnel::tunnels.GetTransitTunnelsExpirationTimeout ();
 		LogPrint (eLogInfo, "I2PControl: Graceful shutdown requested, ", timeout, " seconds remains");
 		InsertParam (results, "ShutdownGraceful", "");
-		m_ShutdownTimer.expires_from_now (boost::posix_time::seconds(timeout + 1)); // + 1 second
+		m_ShutdownTimer.expires_after (std::chrono::seconds(timeout + 1)); // + 1 second
 		m_ShutdownTimer.async_wait (
 			[](const boost::system::error_code& ecode)
 			{
@@ -439,45 +443,46 @@ namespace client
 		FILE *f = NULL;
 #if (OPENSSL_VERSION_NUMBER >= 0x030000000) // since 3.0.0
 		EVP_PKEY *  pkey = EVP_RSA_gen(4096); // e = 65537
-#else		
+#else
 		EVP_PKEY * pkey = EVP_PKEY_new ();
 		RSA * rsa = RSA_new ();
 		BIGNUM * e = BN_dup (i2p::crypto::GetRSAE ());
 		RSA_generate_key_ex (rsa, 4096, e, NULL);
-		BN_free (e);	
+		BN_free (e);
 		if (rsa) EVP_PKEY_assign_RSA (pkey, rsa);
 		else
-		{	
+		{
 			LogPrint (eLogError, "I2PControl: Can't create RSA key for certificate");
 			EVP_PKEY_free (pkey);
 			return;
-		}	
-#endif			
+		}
+#endif
 		X509 * x509 = X509_new ();
 		ASN1_INTEGER_set (X509_get_serialNumber (x509), 1);
 		X509_gmtime_adj (X509_getm_notBefore (x509), 0);
 		X509_gmtime_adj (X509_getm_notAfter (x509), I2P_CONTROL_CERTIFICATE_VALIDITY*24*60*60); // expiration
 		X509_set_pubkey (x509, pkey); // public key
-		X509_NAME * name = X509_get_subject_name (x509);
+		auto name = X509_NAME_dup (X509_get_subject_name (x509));
 		X509_NAME_add_entry_by_txt (name, "C",  MBSTRING_ASC, (unsigned char *)"A1", -1, -1, 0); // country (Anonymous proxy)
 		X509_NAME_add_entry_by_txt (name, "O",  MBSTRING_ASC, (unsigned char *)I2P_CONTROL_CERTIFICATE_ORGANIZATION, -1, -1, 0); // organization
 		X509_NAME_add_entry_by_txt (name, "CN", MBSTRING_ASC, (unsigned char *)I2P_CONTROL_CERTIFICATE_COMMON_NAME, -1, -1, 0); // common name
 		X509_set_issuer_name (x509, name); // set issuer to ourselves
 		X509_sign (x509, pkey, EVP_sha1 ()); // sign, last param must be NULL for EdDSA
+		X509_NAME_free (name);
 
 		// save cert
-		if ((f = fopen (crt_path, "wb")) != NULL) 
+		if ((f = fopen (crt_path, "wb")) != NULL)
 		{
 			LogPrint (eLogInfo, "I2PControl: Saving new cert to ", crt_path);
 			PEM_write_X509 (f, x509);
 			fclose (f);
-		} 
+		}
 		else
 			LogPrint (eLogError, "I2PControl: Can't write cert: ", strerror(errno));
 		X509_free (x509);
-		
+
 		// save key
-		if ((f = fopen (key_path, "wb")) != NULL) 
+		if ((f = fopen (key_path, "wb")) != NULL)
 		{
 			LogPrint (eLogInfo, "I2PControl: saving cert key to ", key_path);
 			PEM_write_PrivateKey (f, pkey, NULL, NULL, 0, NULL, NULL);

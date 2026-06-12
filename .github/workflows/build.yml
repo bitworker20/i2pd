@@ -63,5 +63,5 @@ jobs:
     - name: build application
       run: |
         cd build
-        cmake -DWITH_UPNP=${{ matrix.with_upnp }} .
+        cmake -DWITH_GIT_VERSION=ON -DWITH_UPNP=${{ matrix.with_upnp }} .
         make -j3

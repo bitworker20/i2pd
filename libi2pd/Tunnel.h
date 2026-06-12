@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -89,11 +89,10 @@ namespace tunnel
 			std::shared_ptr<TunnelConfig> GetTunnelConfig () const { return m_Config; }
 			std::vector<std::shared_ptr<const i2p::data::IdentityEx> > GetPeers () const;
 			std::vector<std::shared_ptr<const i2p::data::IdentityEx> > GetInvertedPeers () const;
-			bool IsShortBuildMessage () const { return m_IsShortBuildMessage; };
 			i2p::data::RouterInfo::CompatibleTransports GetFarEndTransports () const { return m_FarEndTransports; };
 			TunnelState GetState () const { return m_State; };
 			void SetState (TunnelState state);
-			bool IsEstablished () const { return m_State == eTunnelStateEstablished || m_State == eTunnelStateTestFailed; };
+			bool IsEstablished () const;
 			bool IsFailed () const { return m_State == eTunnelStateFailed; };
 			bool IsRecreated () const { return m_IsRecreated; };
 			void SetRecreated (bool recreated) { m_IsRecreated = recreated; };
@@ -118,7 +117,7 @@ namespace tunnel
 			bool LatencyFitsRange(int lowerbound, int upperbound) const;
 
 			bool LatencyIsKnown() const { return m_Latency != UNKNOWN_LATENCY; }
-			bool IsSlow () const { return LatencyIsKnown() && m_Latency > HIGH_LATENCY_PER_HOP*GetNumHops (); }
+			bool IsSlow () const;
 
 			/** visit all hops we currently store */
 			void VisitTunnelHops(TunnelHopVisitor v);
@@ -127,9 +126,8 @@ namespace tunnel
 
 			std::shared_ptr<TunnelConfig> m_Config;
 			std::vector<TunnelHop> m_Hops;
-			bool m_IsShortBuildMessage;
 			std::shared_ptr<TunnelPool> m_Pool; // pool, tunnel belongs to, or null
-			TunnelState m_State;
+			std::atomic<TunnelState> m_State;
 			i2p::data::RouterInfo::CompatibleTransports m_FarEndTransports;
 			bool m_IsRecreated; // if tunnel is replaced by new, or new tunnel requested to replace
 			int m_Latency; // in microseconds
@@ -143,6 +141,7 @@ namespace tunnel
 				Tunnel (config), m_Gateway (*this), m_EndpointIdentHash (config->GetLastIdentHash ()) {};
 
 			void SendTunnelDataMsgTo (const uint8_t * gwHash, uint32_t gwTunnel, std::shared_ptr<i2p::I2NPMessage> msg);
+			virtual void SendTunnelDataMsgsTo (const uint8_t * gwHash, uint32_t gwTunnel, const std::vector<std::shared_ptr<i2p::I2NPMessage> >& msgs);
 			virtual void SendTunnelDataMsgs (const std::vector<TunnelMessageBlock>& msgs); // multiple messages
 			const i2p::data::IdentHash& GetEndpointIdentHash () const { return m_EndpointIdentHash; };
 			virtual size_t GetNumSentBytes () const { return m_Gateway.GetNumSentBytes (); };
@@ -152,6 +151,10 @@ namespace tunnel
 
 			bool IsInbound() const override { return false; }
 			bool Recreate () override;
+
+		protected:
+
+			static TunnelMessageBlock CreateTunnelMessageBlock (const uint8_t * gwHash, uint32_t gwTunnel);
 
 		private:
 
@@ -175,11 +178,11 @@ namespace tunnel
 
 		protected:
 
-			std::shared_ptr<InboundTunnel> GetSharedFromThis () 
+			std::shared_ptr<InboundTunnel> GetSharedFromThis ()
 			{
 				return std::static_pointer_cast<InboundTunnel>(shared_from_this ());
 			}
-			
+
 		private:
 
 			TunnelEndpoint m_Endpoint;
@@ -203,6 +206,7 @@ namespace tunnel
 		public:
 
 			ZeroHopsOutboundTunnel ();
+			void SendTunnelDataMsgsTo (const uint8_t * gwHash, uint32_t gwTunnel, const std::vector<std::shared_ptr<i2p::I2NPMessage> >& msgs) override;
 			void SendTunnelDataMsgs (const std::vector<TunnelMessageBlock>& msgs) override;
 			size_t GetNumSentBytes () const override { return m_NumSentBytes; };
 
@@ -237,8 +241,8 @@ namespace tunnel
 			void PostTunnelData (std::list<std::shared_ptr<I2NPMessage> >& msgs); // and cleanup msgs
 			void AddPendingTunnel (uint32_t replyMsgID, std::shared_ptr<InboundTunnel> tunnel);
 			void AddPendingTunnel (uint32_t replyMsgID, std::shared_ptr<OutboundTunnel> tunnel);
-			std::shared_ptr<TunnelPool> CreateTunnelPool (int numInboundHops, 
-			    int numOuboundHops, int numInboundTunnels, int numOutboundTunnels, 
+			std::shared_ptr<TunnelPool> CreateTunnelPool (int numInboundHops,
+			    int numOuboundHops, int numInboundTunnels, int numOutboundTunnels,
 			    int inboundVariance, int outboundVariance,  bool isHighBandwidth);
 			void DeleteTunnelPool (std::shared_ptr<TunnelPool> pool);
 			void StopTunnelPool (std::shared_ptr<TunnelPool> pool);
@@ -249,7 +253,7 @@ namespace tunnel
 			uint32_t GetMaxNumTransitTunnels () const { return m_MaxNumTransitTunnels; };
 			int GetCongestionLevel() const { return m_MaxNumTransitTunnels ? CONGESTION_LEVEL_FULL * m_TransitTunnels.GetNumTransitTunnels () / m_MaxNumTransitTunnels : CONGESTION_LEVEL_FULL; }
 			std::mt19937& GetRng () { return m_Rng; }
-			
+
 		private:
 
 			template<class TTunnel>
@@ -263,7 +267,7 @@ namespace tunnel
 			void HandleShortTunnelBuildMsg (std::shared_ptr<I2NPMessage> msg);
 			void HandleVariableTunnelBuildMsg (std::shared_ptr<I2NPMessage> msg);
 			void HandleTunnelBuildReplyMsg (std::shared_ptr<I2NPMessage> msg, bool isShort);
-			
+
 			void Run ();
 			void ManageTunnels (uint64_t ts);
 			void ManageOutboundTunnels (uint64_t ts, std::vector<std::shared_ptr<Tunnel> >& toRecreate);
@@ -317,7 +321,7 @@ namespace tunnel
 			int m_TunnelCreationAttemptsNum;
 			std::mt19937 m_Rng;
 			TransitTunnels m_TransitTunnels;
-			
+
 		public:
 
 			// for HTTP only

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -12,7 +12,6 @@
 #include <inttypes.h>
 #include <string>
 #include <memory>
-#include <random>
 #include <unordered_set>
 #include <boost/asio.hpp>
 #include "Identity.h"
@@ -38,7 +37,7 @@ namespace garlic
 	const int ROUTER_INFO_CONFIRMATION_TIMEOUT = 1600; // in milliseconds
 	const int ROUTER_INFO_MAX_PUBLISH_EXCLUDED_FLOODFILLS = 15;
 	const int ROUTER_INFO_CONGESTION_UPDATE_INTERVAL = 11*60; // in seconds
-	const int ROUTER_INFO_CONGESTION_UPDATE_INTERVAL_VARIANCE = 130; // in seconds 
+	const int ROUTER_INFO_CONGESTION_UPDATE_INTERVAL_VARIANCE = 130; // in seconds
 	const int ROUTER_INFO_CLEANUP_INTERVAL = 102; // in seconds
 
 	enum RouterStatus
@@ -47,7 +46,8 @@ namespace garlic
 		eRouterStatusFirewalled = 1,
 		eRouterStatusUnknown = 2,
 		eRouterStatusProxy = 3,
-		eRouterStatusMesh = 4
+		eRouterStatusMesh = 4,
+		eRouterStatusStan = 5
 	};
 
 	const char* const ROUTER_STATUS_NAMES[] =
@@ -56,7 +56,8 @@ namespace garlic
 		"Firewalled", // 1
 		"Unknown", // 2
 		"Proxy", // 3
-		"Mesh" // 4
+		"Mesh", // 4
+		"Stan" // 5
 	};
 
 	enum RouterError
@@ -96,14 +97,14 @@ namespace garlic
 					void Start () { StartIOService (); };
 					void Stop () { StopIOService (); };
 			};
-			
+
 		public:
 
 			RouterContext ();
 			void Init ();
 			void Start ();
 			void Stop ();
-			
+
 			const i2p::data::PrivateKeys& GetPrivateKeys () const { return m_Keys; };
 			i2p::data::LocalRouterInfo& GetRouterInfo () { return m_RouterInfo; };
 			std::shared_ptr<i2p::data::RouterInfo> GetSharedRouterInfo ()
@@ -117,7 +118,7 @@ namespace garlic
 					[](i2p::garlic::GarlicDestination *) {});
 			}
 			std::shared_ptr<i2p::data::RouterInfo::Buffer> CopyRouterInfoBuffer () const;
-			
+
 			const uint8_t * GetNTCP2StaticPublicKey () const { return m_NTCP2Keys ? m_NTCP2Keys->staticPublicKey : nullptr; };
 			const uint8_t * GetNTCP2StaticPrivateKey () const { return m_NTCP2Keys ? m_NTCP2Keys->staticPrivateKey : nullptr; };
 			const uint8_t * GetNTCP2IV () const { return m_NTCP2Keys ? m_NTCP2Keys->iv : nullptr; };
@@ -151,8 +152,8 @@ namespace garlic
 
 			void UpdatePort (int port); // called from Daemon
 			void UpdateAddress (const boost::asio::ip::address& host); // called from SSU2 or Daemon
-			void PublishNTCP2Address (int port, bool publish, bool v4, bool v6, bool ygg);
-			void PublishSSU2Address (int port, bool publish, bool v4, bool v6);
+			void PublishNTCP2Address (int port, bool publish, bool v4, bool v6, bool ygg, int version);
+			void PublishSSU2Address (int port, bool publish, bool v4, bool v6, int version);
 			bool AddSSU2Introducer (const i2p::data::RouterInfo::Introducer& introducer, bool v4);
 			void RemoveSSU2Introducer (const i2p::data::IdentHash& h, bool v4);
 			void UpdateSSU2Introducer (const i2p::data::IdentHash& h, bool v4, uint32_t iTag, uint32_t iExp);
@@ -179,7 +180,7 @@ namespace garlic
 			void SetMTU (int mtu, bool v4);
 			void SetHidden(bool hide) { m_IsHiddenMode = hide; };
 			bool IsHidden() const { return m_IsHiddenMode; };
-			bool IsLimitedConnectivity () const { return m_Status == eRouterStatusProxy; }; // TODO: implement other cases
+			bool IsLimitedConnectivity () const { return m_Status == eRouterStatusProxy || m_Status == eRouterStatusStan; };
 			i2p::crypto::NoiseSymmetricState& GetCurrentNoiseState () { return m_CurrentNoiseState; };
 
 			void UpdateNTCP2V6Address (const boost::asio::ip::address& host); // called from Daemon. TODO: remove
@@ -220,7 +221,9 @@ namespace garlic
 			void SaveKeys ();
 			void Sign (const uint8_t * buf, int len, uint8_t * signature) const { m_Keys.Sign (buf, len, signature); };
 			uint16_t SelectRandomPort () const;
-			void PublishNTCP2Address (std::shared_ptr<i2p::data::RouterInfo::Address> address, int port, bool publish) const;
+			void PublishNTCP2Address (std::shared_ptr<i2p::data::RouterInfo::Address> address, int port, bool publish, int version) const;
+            void UpdateSSU2AddressCapsIntroducer (std::shared_ptr<i2p::data::RouterInfo::Address> address, bool isIntroducer) const;
+            void UpdateSSU2AddressCapsTesting (std::shared_ptr<i2p::data::RouterInfo::Address> address, bool isTesting) const;
 
 			bool DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data, size_t clearTextSize);
 			void PostGarlicMessage (std::shared_ptr<I2NPMessage> msg);
@@ -238,7 +241,7 @@ namespace garlic
 			void UpdateCongestion ();
 			void ScheduleCleanupTimer ();
 			void HandleCleanupTimer (const boost::system::error_code& ecode);
-			
+
 		private:
 
 			i2p::data::LocalRouterInfo m_RouterInfo;
@@ -261,15 +264,14 @@ namespace garlic
 			i2p::crypto::NoiseSymmetricState m_InitialNoiseState, m_CurrentNoiseState;
 			// publish
 			std::unique_ptr<RouterService> m_Service;
-			std::unique_ptr<boost::asio::deadline_timer> m_PublishTimer, m_CongestionUpdateTimer, m_CleanupTimer;
+			std::unique_ptr<boost::asio::steady_timer> m_PublishTimer, m_CongestionUpdateTimer, m_CleanupTimer;
 			std::unordered_set<i2p::data::IdentHash> m_PublishExcluded;
 			uint32_t m_PublishReplyToken;
 			bool m_IsHiddenMode; // not publish
 			mutable std::mutex m_RouterInfoMutex;
-			std::mt19937 m_Rng;
 			std::shared_ptr<i2p::data::RouterInfo::Buffer> m_SaveBuffer;
 			std::mutex m_SaveBufferMutex; // TODO: make m_SaveBuffer atomic
-			std::atomic<bool> m_IsSaving;
+			std::atomic_flag m_IsSaving;
 	};
 
 	extern RouterContext context;

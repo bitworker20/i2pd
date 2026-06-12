@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2020, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -20,6 +20,10 @@ namespace i2p
 {
 namespace data
 {
+	constexpr int MAX_NUM_RESEED_ATTEMPTS = 10;
+	constexpr int RESEED_CONNECT_TIMEOUT = 5; // in seconds
+	constexpr int RESEED_WAITING_INTERVAL = 30; // in second
+	constexpr int RESEED_GIVEUP_TIMEOUT = 180; // in seconds
 
 	class Reseeder
 	{

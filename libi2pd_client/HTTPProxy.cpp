@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -32,9 +32,12 @@
 #include "I18N.h"
 #include "Socks5.h"
 
-namespace i2p {
-namespace proxy {
-	static const std::vector<std::string> jumporder = {
+namespace i2p
+{
+namespace proxy
+{
+	static constexpr std::array jumporder =
+	{
 		"reg.i2p",
 		"stats.i2p",
 		"identiguy.i2p",
@@ -48,7 +51,7 @@ namespace proxy {
 		{ "notbob.i2p",    "http://nytzrhrjjfsutowojvxi7hphesskpqqr65wpistz6wa7cpajhp7a.b32.i2p/cgi-bin/jump.cgi?q=" }
 	};
 
-	static const char *pageHead =
+	static constexpr std::string_view pageHead =
 		"<head>\r\n"
 		"  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\r\n"
 		"  <title>I2Pd HTTP proxy</title>\r\n"
@@ -60,12 +63,12 @@ namespace proxy {
 		"</head>\r\n"
 	;
 
-	static bool str_rmatch(std::string_view str, const char *suffix) 
+	static bool str_rmatch(std::string_view str, std::string_view suffix)
 	{
 		auto pos = str.rfind (suffix);
-		if (pos == std::string::npos)
+		if (pos == std::string_view::npos)
 			return false; /* not found */
-		if (str.length() == (pos + std::strlen(suffix)))
+		if (str.length() == pos + suffix.length ())
 			return true; /* match */
 		return false;
 	}
@@ -162,7 +165,7 @@ namespace proxy {
 		Done(shared_from_this());
 	}
 
-	void HTTPReqHandler::GenericProxyError(std::string_view title, std::string_view description) 
+	void HTTPReqHandler::GenericProxyError(std::string_view title, std::string_view description)
 	{
 		std::stringstream ss;
 		ss << "<h1>" << tr("Proxy error") << ": " << title << "</h1>\r\n";
@@ -170,7 +173,7 @@ namespace proxy {
 		SendProxyError(ss.str ());
 	}
 
-	void HTTPReqHandler::GenericProxyInfo(std::string_view title, std::string_view description) 
+	void HTTPReqHandler::GenericProxyInfo(std::string_view title, std::string_view description)
 	{
 		std::stringstream ss;
 		ss << "<h1>" << tr("Proxy info") << ": " << title << "</h1>\r\n";
@@ -178,7 +181,7 @@ namespace proxy {
 		SendProxyError(ss.str ());
 	}
 
-	void HTTPReqHandler::HostNotFound(std::string_view host) 
+	void HTTPReqHandler::HostNotFound(std::string_view host)
 	{
 		std::stringstream ss;
 		ss << "<h1>" << tr("Proxy error: Host not found") << "</h1>\r\n"
@@ -243,8 +246,8 @@ namespace proxy {
 		{
 			LogPrint (eLogError, "HTTPProxy: Malformed jump link ", jump);
 			return false;
-		}	
-		
+		}
+
 		// if we need update exists, request formed with update param
 		if (params["update"] == "true")
 		{
@@ -296,13 +299,13 @@ namespace proxy {
 				{
 					if (padding) return false; // other chars after padding
 					if (!i2p::data::IsBase64(ch)) return false;
-				}	
-			}	
+				}
+			}
 			return true;
-		}	
+		}
 		return false;
-	}	
-	
+	}
+
 	void HTTPReqHandler::SanitizeHTTPRequest(i2p::http::HTTPReq& req)
 	{
 		/* drop common headers */
@@ -535,6 +538,7 @@ namespace proxy {
 		m_send_buf.append(m_recv_buf);
 		/* connect to destination */
 		LogPrint(eLogDebug, "HTTPProxy: Connecting to host ", dest_host, ":", dest_port);
+		GetOwner ()->UpdateLastActivityTime ();
 		GetOwner()->CreateStream (std::bind (&HTTPReqHandler::HandleStreamRequestComplete,
 			shared_from_this(), std::placeholders::_1), dest_host, dest_port);
 		return true;
@@ -583,8 +587,8 @@ namespace proxy {
 			}
 			else
 			{
-				m_proxy_resolver.async_resolve(m_ProxyURL.host, std::to_string(m_ProxyURL.port), std::bind(&HTTPReqHandler::HandleUpstreamProxyResolved, this, 
-				    std::placeholders::_1, std::placeholders::_2, [&](boost::asio::ip::tcp::endpoint ep) 
+				m_proxy_resolver.async_resolve(m_ProxyURL.host, std::to_string(m_ProxyURL.port), std::bind(&HTTPReqHandler::HandleUpstreamProxyResolved, this,
+				    std::placeholders::_1, std::placeholders::_2, [&](boost::asio::ip::tcp::endpoint ep)
 				    {
 					 	m_proxysock->async_connect(ep, std::bind(&HTTPReqHandler::HandleUpstreamHTTPProxyConnect, this, std::placeholders::_1));
 					}));
@@ -594,8 +598,8 @@ namespace proxy {
 		{
 			/* handle upstream socks proxy */
 			if (!m_ProxyURL.port) m_ProxyURL.port = 9050; // default to tor default if not specified
-			m_proxy_resolver.async_resolve(m_ProxyURL.host, std::to_string(m_ProxyURL.port), std::bind(&HTTPReqHandler::HandleUpstreamProxyResolved, this, 
-			    std::placeholders::_1, std::placeholders::_2, [&](boost::asio::ip::tcp::endpoint ep) 
+			m_proxy_resolver.async_resolve(m_ProxyURL.host, std::to_string(m_ProxyURL.port), std::bind(&HTTPReqHandler::HandleUpstreamProxyResolved, this,
+			    std::placeholders::_1, std::placeholders::_2, [&](boost::asio::ip::tcp::endpoint ep)
 			    {
 					m_proxysock->async_connect(ep, std::bind(&HTTPReqHandler::HandleUpstreamSocksProxyConnect, this, std::placeholders::_1));
 				}));
@@ -615,9 +619,9 @@ namespace proxy {
 
 	void HTTPReqHandler::HandleUpstreamSocksProxyConnect(const boost::system::error_code & ec)
 	{
-		if(!ec) 
+		if(!ec)
 		{
-			if(m_RequestURL.host.size() > 255) 
+			if(m_RequestURL.host.size() > 255)
 			{
 				GenericProxyError(tr("Hostname is too long"), m_RequestURL.host);
 				return;
@@ -633,11 +637,11 @@ namespace proxy {
 					if (!ec)
 						s->SocksProxySuccess();
 					else
-						s->GenericProxyError(tr("SOCKS proxy error"), ec.message ());	
+						s->GenericProxyError(tr("SOCKS proxy error"), ec.message ());
 				});
-			
-		} 
-		else 
+
+		}
+		else
 			GenericProxyError(tr("Cannot connect to upstream SOCKS proxy"), ec.message());
 	}
 
@@ -666,13 +670,18 @@ namespace proxy {
 	{
 		if(stream)
 		{
-			m_ClientResponse.code = 200;
-			m_ClientResponse.status = "OK";
-			m_send_buf = m_ClientResponse.to_string();
-			m_sock->send(boost::asio::buffer(m_send_buf));
-			auto connection = std::make_shared<i2p::client::I2PTunnelConnection>(GetOwner(), m_sock, stream);
-			GetOwner()->AddHandler(connection);
-			connection->I2PConnect();
+			if (m_sock && m_sock->is_open ())
+			{
+				m_ClientResponse.code = 200;
+				m_ClientResponse.status = "OK";
+				m_send_buf = m_ClientResponse.to_string();
+				m_sock->send(boost::asio::buffer(m_send_buf));
+				auto connection = std::make_shared<i2p::client::I2PTunnelConnection>(GetOwner(), m_sock, stream);
+				GetOwner()->AddHandler(connection);
+				connection->I2PConnect();
+			}
+			else
+				stream->AsyncClose ();
 			m_sock = nullptr;
 			Terminate();
 		}
@@ -753,7 +762,7 @@ namespace proxy {
 		Done (shared_from_this());
 	}
 
-	HTTPProxy::HTTPProxy(const std::string& name, const std::string& address, uint16_t port, 
+	HTTPProxy::HTTPProxy(const std::string& name, const std::string& address, uint16_t port,
 	    const std::string & outproxy, bool addresshelper, bool senduseragent, std::shared_ptr<i2p::client::ClientDestination> localDestination):
 		TCPIPAcceptor (address, port, localDestination ? localDestination : i2p::client::context.GetSharedLocalDestination ()),
 		m_Name (name), m_OutproxyUrl (outproxy), m_Addresshelper (addresshelper), m_SendUserAgent (senduseragent)

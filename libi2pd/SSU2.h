@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, The PurpleI2P Project
+* Copyright (c) 2022-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -36,12 +36,13 @@ namespace transport
 	const uint64_t SSU2_SOCKET_MIN_BUFFER_SIZE = 128 * 1024;
 #if defined(__OpenBSD__)
 	const uint64_t SSU2_SOCKET_MAX_BUFFER_SIZE = 2 * 1024 * 1024;
-#else	
+#else
 	const uint64_t SSU2_SOCKET_MAX_BUFFER_SIZE = 4 * 1024 * 1024;
-#endif	
+#endif
 	const size_t SSU2_MAX_NUM_INTRODUCERS = 3;
 	const size_t SSU2_MIN_RECEIVED_PACKET_SIZE = 40; // 16 byte short header + 8 byte minimum payload + 16 byte MAC
 	const size_t SSU2_MAX_RECEIVED_QUEUE_SIZE = 2500; // in packets
+	const size_t SSU2_STOP_ACCEPTING_NEW_SESSIONS_QUEUE_SIZE = 500; // in packets
 	const int SSU2_TO_INTRODUCER_SESSION_DURATION = 3600; // 1 hour
 	const int SSU2_TO_INTRODUCER_SESSION_EXPIRATION = 4800; // 80 minutes
 	const int SSU2_KEEP_ALIVE_INTERVAL = 15; // in seconds
@@ -59,7 +60,7 @@ namespace transport
 			size_t len;
 			boost::asio::ip::udp::endpoint from;
 		};
-	
+
 		class ReceiveService: public i2p::util::RunnableService
 		{
 			public:
@@ -88,9 +89,9 @@ namespace transport
 			void AddConnectedRecently (const boost::asio::ip::udp::endpoint& ep, uint64_t ts);
 			std::mt19937& GetRng () { return m_Rng; }
 			bool AEADChaCha20Poly1305Encrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
-				const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len); 
+				const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len);
 			bool AEADChaCha20Poly1305Decrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
-				const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len); 
+				const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len);
 			void ChaCha20 (const uint8_t * msg, size_t msgLen, const uint8_t * key, const uint8_t * nonce, uint8_t * out);
 			bool IsMaxNumIntroducers (bool v4) const { return (v4 ? m_Introducers.size () : m_IntroducersV6.size ()) >= SSU2_MAX_NUM_INTRODUCERS; }
 			bool IsSyncClockFromPeers () const { return m_IsSyncClockFromPeers; };
@@ -111,12 +112,12 @@ namespace transport
 			void RemoveRelay (uint32_t tag);
 			std::shared_ptr<SSU2Session> FindRelaySession (uint32_t tag);
 
-			bool AddPeerTest (uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts); 
-			std::shared_ptr<SSU2Session> GetPeerTest (uint32_t nonce);	
-		
+			bool AddPeerTest (uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts);
+			std::shared_ptr<SSU2Session> GetPeerTest (uint32_t nonce);
+
 			bool AddRequestedPeerTest (uint32_t nonce, std::shared_ptr<SSU2PeerTestSession> session, uint64_t ts);
-			std::shared_ptr<SSU2PeerTestSession> GetRequestedPeerTest (uint32_t nonce);		
-		
+			std::shared_ptr<SSU2PeerTestSession> GetRequestedPeerTest (uint32_t nonce);
+
 			void Send (const uint8_t * header, size_t headerLen, const uint8_t * payload, size_t payloadLen,
 				const boost::asio::ip::udp::endpoint& to);
 			void Send (const uint8_t * header, size_t headerLen, const uint8_t * headerX, size_t headerXLen,
@@ -138,6 +139,9 @@ namespace transport
 			i2p::util::MemoryPool<SSU2IncompleteMessage>& GetIncompleteMessagesPool () { return m_IncompleteMessagesPool; };
 			i2p::util::MemoryPool<SSU2IncompleteMessage::Fragment>& GetFragmentsPool () { return m_FragmentsPool; };
 
+			void SetVersion (int version);
+            int GetVersion () const { return m_Version; }
+
 		private:
 
 			boost::asio::ip::udp::socket& OpenSocket (const boost::asio::ip::udp::endpoint& localEndpoint);
@@ -149,7 +153,7 @@ namespace transport
 			void InsertToReceivedPacketsQueue (Packet * packet);
 			void InsertToReceivedPacketsQueue (std::list<Packet *>& packets);
 			void HandleReceivedPacketsQueue ();
-		
+
 			void ScheduleTermination ();
 			void HandleTerminationTimer (const boost::system::error_code& ecode);
 
@@ -197,7 +201,7 @@ namespace transport
 			i2p::util::MemoryPool<SSU2SentPacket> m_SentPacketsPool;
 			i2p::util::MemoryPool<SSU2IncompleteMessage> m_IncompleteMessagesPool;
 			i2p::util::MemoryPool<SSU2IncompleteMessage::Fragment> m_FragmentsPool;
-			boost::asio::deadline_timer m_TerminationTimer, m_CleanupTimer, m_ResendTimer,
+			boost::asio::steady_timer m_TerminationTimer, m_CleanupTimer, m_ResendTimer,
 				m_IntroducersUpdateTimer, m_IntroducersUpdateTimerV6;
 			std::shared_ptr<SSU2Session> m_LastSession;
 			bool m_IsPublished; // if we maintain introducers
@@ -207,21 +211,22 @@ namespace transport
 			std::mt19937 m_Rng;
 			std::map<boost::asio::ip::udp::endpoint, uint64_t> m_ConnectedRecently; // endpoint -> last activity time in seconds
 			mutable std::mutex m_ConnectedRecentlyMutex;
-			std::unordered_map<uint32_t, std::pair <std::weak_ptr<SSU2PeerTestSession>, uint64_t > > m_RequestedPeerTests; // nonce->(Alice, timestamp) 
+			std::unordered_map<uint32_t, std::pair <std::weak_ptr<SSU2PeerTestSession>, uint64_t > > m_RequestedPeerTests; // nonce->(Alice, timestamp)
 			std::list<Packet *> m_ReceivedPacketsQueue;
 			mutable std::mutex m_ReceivedPacketsQueueMutex;
 			i2p::crypto::AEADChaCha20Poly1305Encryptor m_Encryptor;
 			i2p::crypto::AEADChaCha20Poly1305Decryptor m_Decryptor;
 			i2p::crypto::ChaCha20Context m_ChaCha20;
 			bool m_IsForcedFirewalled4, m_IsForcedFirewalled6;
-		
+			int m_Version;
+
 			// proxy
 			bool m_IsThroughProxy;
 			uint8_t m_UDPRequestHeader[SOCKS5_UDP_IPV6_REQUEST_HEADER_SIZE];
 			std::unique_ptr<boost::asio::ip::tcp::endpoint> m_ProxyEndpoint;
 			std::unique_ptr<boost::asio::ip::tcp::socket> m_UDPAssociateSocket;
 			std::unique_ptr<boost::asio::ip::udp::endpoint> m_ProxyRelayEndpoint;
-			std::unique_ptr<boost::asio::deadline_timer> m_ProxyConnectRetryTimer;
+			std::unique_ptr<boost::asio::steady_timer> m_ProxyConnectRetryTimer;
 
 		public:
 

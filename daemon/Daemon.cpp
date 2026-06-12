@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -10,11 +10,16 @@
 #include <memory>
 #include <regex>
 
+#ifdef __OpenBSD__
+#	include<unistd.h>
+#endif
+
 #include "Daemon.h"
 
 #include "Config.h"
 #include "Log.h"
 #include "FS.h"
+#include "CPU.h"
 #include "Base.h"
 #include "version.h"
 #include "Transports.h"
@@ -102,6 +107,84 @@ namespace util
 		i2p::config::ParseConfig(config);
 		i2p::config::Finalize();
 
+#ifdef __OpenBSD__
+		auto init_pledge = []() {
+			std::string pledge_file; i2p::config::GetOption("openbsd.pledge_file", pledge_file);
+			if (pledge_file == "")
+			{
+				LogPrint(eLogDebug, "Use default pledge values");
+				// TODO: remove that not need
+				pledge("stdio rpath wpath cpath inet dns unix recvfd sendfd proc error mcast chown flock",nullptr);
+			} else {
+				std::ifstream f(pledge_file);
+				if(!f) {
+					std::cerr << "Can't open pledge file " << pledge_file<<std::endl;
+					exit(1);
+				}
+				std::string line;
+				std::vector<std::string> rules;
+				while(std::getline(f, line)){
+					rules.push_back(line);
+				}
+				if(f.bad()) {
+					std::cerr << "IO error with pledge file" << std::endl;
+				}
+				std::ostringstream out;
+				for(auto r : rules)
+					out << r << " ";
+				pledge(out.str().c_str(), nullptr);
+			}		
+
+
+		};
+		auto init_unevil = []() {
+			unveil("/usr/lib", "r");
+			unveil("/usr/local/lib", "r"); 
+			unveil("/usr/libexec/ld.so", "r"); 
+			unveil("/dev/urandom", "r");
+			unveil("/tmp", "rw");
+			unveil("/etc/i2pd", "r"); // ваще не нужно вроде на весь прям каталог
+			
+			#define UNVEIL_DIR(dir) unveil(dir.c_str(), "rwc")
+			
+			std::string unevil_file; i2p::config::GetOption("openbsd.unevil_file",unevil_file);
+			UNVEIL_DIR(unevil_file);
+			std::string tunnelsdir, certsdir, logfile, datadir, reseed_file, openbsd_pledge_file;
+			i2p::config::GetOption("tunnelsdir", tunnelsdir);
+			UNVEIL_DIR(tunnelsdir);
+			i2p::config::GetOption("certsdir", certsdir);
+			UNVEIL_DIR(certsdir);
+			i2p::config::GetOption("datadir", datadir);
+			UNVEIL_DIR(datadir);
+			i2p::config::GetOption("reseed.file", reseed_file);
+			unveil(reseed_file.c_str(), "r");
+			i2p::config::GetOption("openbsd.pledge_file", openbsd_pledge_file);
+			unveil(openbsd_pledge_file.c_str(), "r");
+			std::string tunconf ;i2p::config::GetOption("tunconf", tunconf); unveil(tunconf.c_str(), "r");
+			std::string conf ;i2p::config::GetOption("tunconf", conf); unveil(conf.c_str(), "r");
+			std::string pidfile ;i2p::config::GetOption("pidfile", pidfile); unveil(pidfile.c_str(), "rwc");
+			i2p::config::GetOption("logfile", logfile); unveil(logfile.c_str(), "rwc");
+			if(unevil_file != "")
+			{
+				std::ifstream f(unevil_file);
+				if (!f) {
+					std::cerr << "Can't open unevil file" << std::endl;
+					exit(1);
+				}
+				std::string line;
+				while(std::getline(f, line)){
+						UNVEIL_DIR(line);
+				}
+			}
+			#undef UNVEIL_DIR
+			unveil(NULL, NULL); 
+		};
+		bool openbsd_unevil_enabled; i2p::config::GetOption("openbsd.unevil_enabled", openbsd_unevil_enabled);
+		bool openbsd_pledge_enabled; i2p::config::GetOption("openbsd.pledge_enabled", openbsd_pledge_enabled);
+		if(openbsd_unevil_enabled) init_unevil();
+		if(openbsd_pledge_enabled) init_pledge();
+#endif
+
 		i2p::config::GetOption("daemon", isDaemon);
 
 		std::string certsdir; i2p::config::GetOption("certsdir", certsdir);
@@ -179,6 +262,8 @@ namespace util
 		bool transit; i2p::config::GetOption("notransit", transit);
 		i2p::context.SetAcceptsTunnels (!transit);
 		uint32_t transitTunnels; i2p::config::GetOption("limits.transittunnels", transitTunnels);
+		if (transitTunnels < 2)
+			transitTunnels = 2;
 		if (isFloodfill && i2p::config::IsDefault ("limits.transittunnels"))
 			transitTunnels *= 2; // double default number of transit tunnels for floodfill
 		i2p::tunnel::tunnels.SetMaxNumTransitTunnels (transitTunnels);
@@ -188,7 +273,7 @@ namespace util
 		if (bandwidth.length () > 0)
 		{
 			const auto NumBandwithRegex = std::regex(R"(^\d+$)");
-			const auto BandwithRegex = std::regex(R"((\d+)(b|kb|mb|gb))");	
+			const auto BandwithRegex = std::regex(R"((\d+)(b|kb|mb|gb))");
 			std::smatch bandWithMatch;
 
 			if (bandwidth.length () == 1 && ((bandwidth[0] >= 'K' && bandwidth[0] <= 'P') || bandwidth[0] == 'X' ))
@@ -196,7 +281,8 @@ namespace util
 				i2p::context.SetBandwidth (bandwidth[0]);
 				LogPrint(eLogInfo, "Daemon: Bandwidth set to ", i2p::context.GetBandwidthLimit (), "KBps");
 			}
-			else if (std::regex_match(bandwidth, bandWithMatch, BandwithRegex)) {
+			else if (std::regex_match(bandwidth, bandWithMatch, BandwithRegex))
+			{
 				const auto number = bandWithMatch[1].str();
 				const auto unit   = bandWithMatch[2].str();
 				int limit = std::atoi(number.c_str());
@@ -204,7 +290,7 @@ namespace util
 				if (unit == "b")
 				{
 					limit /= 1000;
-				} 
+				}
 				else if(unit == "mb")
 				{
 					limit *= 1000;
@@ -216,7 +302,7 @@ namespace util
 				if (limit < 0)
 				{
 					LogPrint(eLogInfo, "Daemon: Unexpected bandwidth ", bandwidth, ". Set to 'low'");
-					i2p::context.SetBandwidth (i2p::data::CAPS_FLAG_LOW_BANDWIDTH2);					
+					i2p::context.SetBandwidth (i2p::data::CAPS_FLAG_LOW_BANDWIDTH2);
 				} else {
 					i2p::context.SetBandwidth(limit);
 				}
@@ -234,7 +320,7 @@ namespace util
 					LogPrint(eLogInfo, "Daemon: Unexpected bandwidth ", bandwidth, ". Set to 'low'");
 					i2p::context.SetBandwidth (i2p::data::CAPS_FLAG_LOW_BANDWIDTH2);
 				}
-			} 
+			}
 		}
 		else if (isFloodfill)
 		{
@@ -243,8 +329,21 @@ namespace util
 		}
 		else
 		{
+#if IS_X86_64
+			if (std::thread::hardware_concurrency() >= 4) // quad core or more
+			{
+				LogPrint(eLogInfo, "Daemon: bandwidth set to 'extra'");
+				i2p::context.SetBandwidth (i2p::data::CAPS_FLAG_EXTRA_BANDWIDTH1);
+			}
+			else
+			{
+				LogPrint(eLogInfo, "Daemon: bandwidth set to 'high'");
+				i2p::context.SetBandwidth (i2p::data::CAPS_FLAG_HIGH_BANDWIDTH);
+			}
+#else
 			LogPrint(eLogInfo, "Daemon: bandwidth set to 'low'");
 			i2p::context.SetBandwidth (i2p::data::CAPS_FLAG_LOW_BANDWIDTH2);
+#endif
 		}
 
 		int shareRatio; i2p::config::GetOption("share", shareRatio);
@@ -259,48 +358,38 @@ namespace util
 		if (trust)
 		{
 			LogPrint(eLogInfo, "Daemon: Explicit trust enabled");
-			std::string fam; i2p::config::GetOption("trust.family", fam);
+			std::string f; i2p::config::GetOption("trust.family", f); std::string_view fam(f);
 			std::string routers; i2p::config::GetOption("trust.routers", routers);
 			bool restricted = false;
 			if (fam.length() > 0)
 			{
-				std::set<std::string> fams;
+				std::vector<std::string_view> fams;
 				size_t pos = 0, comma;
 				do
 				{
 					comma = fam.find (',', pos);
-					fams.insert (fam.substr (pos, comma != std::string::npos ? comma - pos : std::string::npos));
+					fams.push_back (fam.substr (pos, comma != std::string::npos ? comma - pos : std::string::npos));
 					pos = comma + 1;
 				}
 				while (comma != std::string::npos);
 				i2p::transport::transports.RestrictRoutesToFamilies(fams);
 				restricted = fams.size() > 0;
 			}
-			if (routers.length() > 0) {
-				std::set<i2p::data::IdentHash> idents;
-				size_t pos = 0, comma;
-				do
-				{
-					comma = routers.find (',', pos);
-					i2p::data::IdentHash ident;
-					ident.FromBase64 (routers.substr (pos, comma != std::string::npos ? comma - pos : std::string::npos));
-					idents.insert (ident);
-					pos = comma + 1;
-				}
-				while (comma != std::string::npos);
+			if (!routers.empty ())
+			{
+				auto idents = i2p::data::ExtractIdentHashes (routers);
 				LogPrint(eLogInfo, "Daemon: Setting restricted routes to use ", idents.size(), " trusted routers");
 				i2p::transport::transports.RestrictRoutesToRouters(idents);
 				restricted = idents.size() > 0;
 			}
 			if(!restricted)
 				LogPrint(eLogError, "Daemon: No trusted routers of families specified");
-		}
-
-		bool hidden; i2p::config::GetOption("trust.hidden", hidden);
-		if (hidden)
-		{
-			LogPrint(eLogInfo, "Daemon: Hidden mode enabled");
-			i2p::context.SetHidden(true);
+			bool hidden; i2p::config::GetOption("trust.hidden", hidden);
+			if (hidden)
+			{
+				LogPrint(eLogInfo, "Daemon: Hidden mode enabled");
+				i2p::context.SetHidden(true);
+			}
 		}
 
 		std::string httpLang; i2p::config::GetOption("http.lang", httpLang);
@@ -482,6 +571,7 @@ namespace util
 			case eRouterStatusUnknown: s << "Unk"; break;
 			case eRouterStatusProxy: s << "Proxy"; break;
 			case eRouterStatusMesh: s << "Mesh"; break;
+			case eRouterStatusStan: s << "Stan"; break;
 			default: s << "Unk";
 		};
 		if (testing)
@@ -521,13 +611,14 @@ namespace util
 			ShowNetworkStatus (s, i2p::context.GetStatusV6 (), i2p::context.GetTestingV6(), i2p::context.GetErrorV6 ());
 		}
 		s << "; ";
+		s << "Caps: " << i2p::context.GetRouterInfo().GetProperty("caps") << "; ";
 		s << "Success Rate: " << i2p::tunnel::tunnels.GetTunnelCreationSuccessRate() << "%\n";
 		s << "Uptime: "; ShowUptime(s, i2p::context.GetUptime ());
 		auto gracefulTimeLeft = Daemon.GetGracefulShutdownInterval ();
 		if (gracefulTimeLeft > 0)
-		{	
+		{
 			s << "Graceful shutdown, time left: "; ShowUptime(s, gracefulTimeLeft);
-		}	
+		}
 		else
 			s << "\n";
 		s << "Inbound: " << i2p::transport::transports.GetInBandwidth() / 1024 << " KiB/s; ";

@@ -14,6 +14,7 @@
 #include <iostream>
 #include <sstream>
 #include <functional>
+#include <inttypes.h>
 
 #ifndef STD_FILESYSTEM
 #	if (_WIN32 && __GNUG__) // MinGW GCC somehow incorrectly converts paths

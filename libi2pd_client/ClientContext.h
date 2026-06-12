@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -50,8 +50,11 @@ namespace client
 	const char I2P_CLIENT_TUNNEL_MATCH_TUNNELS[] = "matchtunnels";
 	const char I2P_CLIENT_TUNNEL_CONNECT_TIMEOUT[] = "connecttimeout";
 	const char I2P_CLIENT_TUNNEL_KEEP_ALIVE_INTERVAL[] = "keepaliveinterval";
+	const char I2P_CLIENT_TUNNEL_CLOSE_IDLE_TIME[] = "i2cp.closeIdleTime";
+	const char I2P_CLIENT_TUNNEL_NEW_DEST_ON_RESUME[] = "i2cp.newDestOnResume";
 	const char I2P_SERVER_TUNNEL_HOST[] = "host";
 	const char I2P_SERVER_TUNNEL_HOST_OVERRIDE[] = "hostoverride";
+	const char I2P_SERVER_TUNNEL_I2P_HEADERS[] = "i2pheaders";
 	const char I2P_SERVER_TUNNEL_PORT[] = "port";
 	const char I2P_SERVER_TUNNEL_KEYS[] = "keys";
 	const char I2P_SERVER_TUNNEL_SIGNATURE_TYPE[] = "signaturetype";
@@ -64,7 +67,7 @@ namespace client
 	const char I2P_SERVER_TUNNEL_ENABLE_UNIQUE_LOCAL[] = "enableuniquelocal";
 	const char I2P_SERVER_TUNNEL_SSL[] = "ssl";
 	const char UDP_CLIENT_TUNNEL_DATAGRAM_VERSION[] = "datagramversion";
-	
+
 	class ClientContext
 	{
 		public:
@@ -81,19 +84,20 @@ namespace client
 			std::shared_ptr<ClientDestination> CreateNewLocalDestination (bool isPublic = false, // transient
 				i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
 				i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
-				const std::map<std::string, std::string> * params = nullptr); // used by SAM only
+				const i2p::util::Mapping * params = nullptr); // used by SAM only
 			std::shared_ptr<ClientDestination> CreateNewLocalDestination (boost::asio::io_context& service,
 				bool isPublic = false, i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
 				i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
-				const std::map<std::string, std::string> * params = nullptr); // same as previous but on external io_service
+				const i2p::util::Mapping * params = nullptr); // same as previous but on external io_service
 			std::shared_ptr<ClientDestination> CreateNewLocalDestination (const i2p::data::PrivateKeys& keys, bool isPublic = true,
-				const std::map<std::string, std::string> * params = nullptr);
+				const i2p::util::Mapping * params = nullptr);
 			std::shared_ptr<ClientDestination> CreateNewLocalDestination (boost::asio::io_context& service,
 				const i2p::data::PrivateKeys& keys, bool isPublic = true,
-				const std::map<std::string, std::string> * params = nullptr); // same as previous but on external io_service
+				const i2p::util::Mapping * params = nullptr); // same as previous but on external io_service
 			std::shared_ptr<ClientDestination> CreateNewMatchedTunnelDestination(const i2p::data::PrivateKeys &keys,
-				const std::string & name, const std::map<std::string, std::string> * params = nullptr);
+				const std::string & name, const i2p::util::Mapping * params = nullptr);
 			void DeleteLocalDestination (std::shared_ptr<ClientDestination> destination);
+			bool ReplaceLocalDestinationHash (const i2p::data::IdentHash& oldIdentHash, const i2p::data::IdentHash& newIdentHash);
 			std::shared_ptr<ClientDestination> FindLocalDestination (const i2p::data::IdentHash& destination) const;
 			bool LoadPrivateKeys (i2p::data::PrivateKeys& keys, std::string_view filename,
 				i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
@@ -121,10 +125,10 @@ namespace client
 			template<typename Section>
 			std::string GetI2CPStringOption (const Section& section, const std::string& name, const std::string& value) const; // GetI2CPOption with string default value
 			template<typename Section>
-			void ReadI2CPOptionsGroup (const Section& section, const std::string& group,  std::map<std::string, std::string>& options) const;
+			void ReadI2CPOptionsGroup (const Section& section, const std::string& group, i2p::util::Mapping& options) const;
 			template<typename Section>
-			void ReadI2CPOptions (const Section& section, bool isServer, std::map<std::string, std::string>& options) const; // for tunnels
-			void ReadI2CPOptionsFromConfig (const std::string& prefix, std::map<std::string, std::string>& options) const; // for HTTP and SOCKS proxy
+			void ReadI2CPOptions (const Section& section, bool isServer, i2p::util::Mapping& options) const; // for tunnels
+			void ReadI2CPOptionsFromConfig (const std::string& prefix, i2p::util::Mapping& options) const; // for HTTP and SOCKS proxy
 
 			void CleanupUDP(const boost::system::error_code & ecode);
 			void ScheduleCleanupUDP();
@@ -155,7 +159,7 @@ namespace client
 			BOBCommandChannel * m_BOBCommandChannel;
 			I2CPServer * m_I2CPServer;
 
-			std::unique_ptr<boost::asio::deadline_timer> m_CleanupUDPTimer;
+			std::unique_ptr<boost::asio::steady_timer> m_CleanupUDPTimer;
 
 			// i18n
 			std::shared_ptr<const i2p::i18n::Locale> m_Language;

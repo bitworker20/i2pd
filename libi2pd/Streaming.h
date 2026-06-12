@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -52,19 +52,16 @@ namespace stream
 
 	const size_t STREAMING_MTU = 1730;
 	const size_t STREAMING_MTU_RATCHETS = 1812;
-#if OPENSSL_PQ	
-	const size_t MAX_PACKET_SIZE = 8192;
-#else
-	const size_t MAX_PACKET_SIZE = 4096;
-#endif	
+	const size_t MAX_PACKET_SIZE = 3072;
+
 	const size_t COMPRESSION_THRESHOLD_SIZE = 66;
 	const int MAX_NUM_RESEND_ATTEMPTS = 10;
 	const int INITIAL_WINDOW_SIZE = 10;
 	const int MIN_WINDOW_SIZE = 3;
 	const int MAX_WINDOW_SIZE = 512;
-	const int MAX_WINDOW_SIZE_INC_PER_RTT = 12;
+	const int MAX_WINDOW_SIZE_INC_PER_RTT = 512; // TODO: remove
 	const double RTT_EWMA_ALPHA = 0.1;
-	const double SLOWRTT_EWMA_ALPHA = 0.02;
+	const double SLOWRTT_EWMA_ALPHA = 0.03;
 	const double PREV_SPEED_KEEP_TIME_COEFF = 0.2; // 0.1 - 1 // how long will the window size stay around the previous drop level, less is longer
 	const int MIN_RTO = 20; // in milliseconds
 	const int INITIAL_RTT = 1500; // in milliseconds
@@ -78,13 +75,14 @@ namespace stream
 	const uint16_t DELAY_CHOKING = 60000; // in milliseconds
 	const uint16_t DELAY_CHOKING_JAVA = 61000; // in milliseconds
 	const uint16_t DELAY_CHOKING_2 = 65535; // in milliseconds
-	const uint64_t SEND_INTERVAL = 10000; // in microseconds
-	const uint64_t SEND_INTERVAL_VARIANCE = 2000; // in microseconds
-	const uint64_t REQUEST_IMMEDIATE_ACK_INTERVAL = 7500; // in milliseconds 
-	const uint64_t REQUEST_IMMEDIATE_ACK_INTERVAL_VARIANCE = 3200; // in milliseconds 	
+	const uint16_t DELAY_CHOKING_3 = 65534; // in milliseconds
+	const uint64_t SEND_INTERVAL = 5000; // in microseconds
+	const uint64_t SEND_INTERVAL_VARIANCE = 1000; // in microseconds
+	const uint64_t REQUEST_IMMEDIATE_ACK_INTERVAL = 7500; // in milliseconds
+	const uint64_t REQUEST_IMMEDIATE_ACK_INTERVAL_VARIANCE = 3200; // in milliseconds
 	const bool LOSS_BASED_CONTROL_ENABLED = 0; // 0/1
 	const uint64_t STREAMING_DESTINATION_POOLS_CLEANUP_INTERVAL = 646; // in seconds
-	
+
 	struct Packet
 	{
 		size_t len, offset;
@@ -262,7 +260,7 @@ namespace stream
 			void ProcessWindowDrop ();
 			void ResetWindowSize ();
 			void CancelRemoteLeaseChange ();
-			
+
 		private:
 
 			boost::asio::io_context& m_Service;
@@ -274,7 +272,7 @@ namespace stream
 			int32_t m_LastConfirmedReceivedSequenceNumber; // for limit inbound speed
 			StreamStatus m_Status;
 			bool m_IsIncoming, m_IsAckSendScheduled, m_IsNAcked, m_IsFirstACK, m_IsResendNeeded,
-				m_IsFirstRttSample, m_IsSendTime, m_IsWinDropped, m_IsChoking2, m_IsClientChoked,
+				m_IsFirstRttSample, m_IsSendTime, m_IsWinDropped, m_IsChoking2, m_IsChoking3, m_IsClientChoked,
 				m_IsClientChoked2, m_IsTimeOutResend, m_IsImmediateAckRequested,
 				m_IsRemoteLeaseChangeInProgress, m_IsBufferEmpty, m_IsJavaClient, m_DontSign;
 			StreamingDestination& m_LocalDestination;
@@ -289,7 +287,7 @@ namespace stream
 			std::set<Packet *, PacketCmp> m_SavedPackets;
 			std::set<Packet *, PacketCmp> m_SentPackets;
 			std::set<Packet *, PacketCmp> m_NACKedPackets;
-			boost::asio::deadline_timer m_ReceiveTimer, m_SendTimer, m_ResendTimer, m_AckSendTimer;
+			boost::asio::steady_timer m_ReceiveTimer, m_SendTimer, m_ResendTimer, m_AckSendTimer;
 			size_t m_NumSentBytes, m_NumReceivedBytes;
 			uint16_t m_Port;
 
@@ -301,7 +299,7 @@ namespace stream
 			uint64_t m_MinPacingTime, m_PacingTime, m_PacingTimeRem, // microseconds
 				m_LastSendTime, m_LastACKRecieveTime, m_ACKRecieveInterval, m_RemoteLeaseChangeTime, m_LastWindowIncTime, m_LastACKRequestTime;	// milliseconds
 			uint64_t m_LastACKSendTime, m_PacketACKInterval, m_PacketACKIntervalRem; // for limit inbound speed
-			int m_NumResendAttempts, m_NumPacketsToSend;
+			int m_MaxNumResendAttempts, m_NumResendAttempts, m_NumPacketsToSend;
 			uint64_t m_JitterAccum;
 			int m_JitterDiv;
 			size_t m_MTU;
@@ -333,7 +331,7 @@ namespace stream
 			std::shared_ptr<Stream> AcceptStream (int timeout = 0); // sync
 			void SetPongHandler (const PongHandler& handler);
 			void ResetPongHandler ();
-			
+
 			std::shared_ptr<i2p::client::ClientDestination> GetOwner () const { return m_Owner; };
 			void SetOwner (std::shared_ptr<i2p::client::ClientDestination> owner) { m_Owner = owner; };
 			uint16_t GetLocalPort () const { return m_LocalPort; };
@@ -351,7 +349,12 @@ namespace stream
 			std::shared_ptr<Stream> CreateNewIncomingStream (uint32_t receiveStreamID);
 			void HandlePendingIncomingTimer (const boost::system::error_code& ecode);
 
+            void CleanupExpiredNumConnectionsPerSecond (std::list<uint64_t>& numConnectionsList, uint64_t ts);
+
 		private:
+
+            i2p::util::MemoryPool<Packet> m_PacketsPool;
+			i2p::util::MemoryPool<I2NPMessageBuffer<I2NP_MAX_SHORT_MESSAGE_SIZE> > m_I2NPMsgsPool;
 
 			std::shared_ptr<i2p::client::ClientDestination> m_Owner;
 			uint16_t m_LocalPort;
@@ -363,13 +366,12 @@ namespace stream
 			Acceptor m_Acceptor;
 			PongHandler m_PongHandler;
 			std::list<std::shared_ptr<Stream> > m_PendingIncomingStreams;
-			boost::asio::deadline_timer m_PendingIncomingTimer;
+			boost::asio::steady_timer m_PendingIncomingTimer;
 			std::unordered_map<uint32_t, std::list<Packet *> > m_SavedPackets; // receiveStreamID->packets, arrived before SYN
 
-			i2p::util::MemoryPool<Packet> m_PacketsPool;
-			i2p::util::MemoryPool<I2NPMessageBuffer<I2NP_MAX_SHORT_MESSAGE_SIZE> > m_I2NPMsgsPool;
 			uint64_t m_LastCleanupTime; // in seconds
-			
+			std::unordered_map<i2p::data::Tag<32>, std::list<uint64_t> > m_NumIncomingConnectionsPerSecond; // static key -> list of timestamps in seconds
+
 		public:
 
 			i2p::data::GzipInflator m_Inflator;
@@ -392,7 +394,7 @@ namespace stream
 			else
 			{
 				int t = (timeout > MAX_RECEIVE_TIMEOUT) ? MAX_RECEIVE_TIMEOUT : timeout;
-				s->m_ReceiveTimer.expires_from_now (boost::posix_time::seconds(t));
+				s->m_ReceiveTimer.expires_after (std::chrono::seconds(t));
 				int left = timeout - t;
 				s->m_ReceiveTimer.async_wait (
 					[s, buffer, handler, left](const boost::system::error_code & ec)

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, The PurpleI2P Project
+* Copyright (c) 2021-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -28,11 +28,15 @@ namespace i18n
 	namespace chinese    { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace czech      { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace english    { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
+	namespace esperanto  { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
+	namespace filipino   { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
+	namespace finnish    { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace french     { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace german     { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace hebrew     { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace hindi      { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace italian    { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
+	namespace persian    { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace polish     { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace portuguese { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
 	namespace russian    { std::shared_ptr<const i2p::i18n::Locale> GetLocale (); }
@@ -53,11 +57,15 @@ namespace i18n
 		{ "chinese", {"简体字", "zh-CN", i2p::i18n::chinese::GetLocale} },
 		{ "czech", {"čeština", "cs", i2p::i18n::czech::GetLocale} },
 		{ "english", {"English", "en", i2p::i18n::english::GetLocale} },
+		{ "esperanto", {"Esperanto", "eo", i2p::i18n::esperanto::GetLocale} },
+		{ "filipino", {"Wikang Filipino", "fil", i2p::i18n::filipino::GetLocale} },
+		{ "finnish", {"Suomi", "fi", i2p::i18n::finnish::GetLocale} },
 		{ "french", {"Français", "fr", i2p::i18n::french::GetLocale} },
 		{ "german", {"Deutsch", "de", i2p::i18n::german::GetLocale} },
 		{ "hebrew", {"עִבְרִית‎", "he", i2p::i18n::hebrew::GetLocale} },
 		{ "hindi", {"हिन्दी", "hi", i2p::i18n::hindi::GetLocale} },
 		{ "italian", {"Italiano", "it", i2p::i18n::italian::GetLocale} },
+		{ "persian", {"فارسی", "fa", i2p::i18n::persian::GetLocale} },
 		{ "polish", {"Polski", "pl", i2p::i18n::polish::GetLocale} },
 		{ "portuguese", {"Português", "pt", i2p::i18n::portuguese::GetLocale} },
 		{ "russian", {"Русский язык", "ru", i2p::i18n::russian::GetLocale} },

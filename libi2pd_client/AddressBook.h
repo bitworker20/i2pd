@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -62,7 +62,7 @@ namespace client
 		public:
 
 			typedef std::map<std::string, std::shared_ptr<Address>, std::less<> > Addresses;
-			
+
 			virtual ~AddressBookStorage () {};
 			virtual std::shared_ptr<const i2p::data::IdentityEx> GetAddress (const i2p::data::IdentHash& ident) = 0;
 			virtual void AddAddress (std::shared_ptr<const i2p::data::IdentityEx> address) = 0;
@@ -84,7 +84,7 @@ namespace client
 	class AddressBook
 	{
 		public:
-			
+
 			AddressBook ();
 			~AddressBook ();
 			void Start ();
@@ -107,7 +107,7 @@ namespace client
 
 			bool GetEtag (const i2p::data::IdentHash& subscription, std::string& etag, std::string& lastModified);
 			bool IsEnabled () const { return m_IsEnabled; }
-			
+
 		private:
 
 			void StartSubscriptions ();
@@ -124,7 +124,7 @@ namespace client
 			void HandleLookupResponse (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 
 			void ScheduleCacheUpdate ();
-			
+
 		private:
 
 			std::mutex m_AddressBookMutex;
@@ -138,7 +138,7 @@ namespace client
 			int m_NumRetries;
 			std::vector<std::shared_ptr<AddressBookSubscription> > m_Subscriptions;
 			std::shared_ptr<AddressBookSubscription> m_DefaultSubscription; // in case if we don't know any addresses yet
-			std::unique_ptr<boost::asio::deadline_timer> m_SubscriptionsUpdateTimer, m_AddressCacheUpdateTimer;
+			std::unique_ptr<boost::asio::steady_timer> m_SubscriptionsUpdateTimer, m_AddressCacheUpdateTimer;
 			bool m_IsEnabled;
 	};
 

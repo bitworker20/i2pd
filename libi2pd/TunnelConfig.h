@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -47,28 +47,13 @@ namespace tunnel
 		virtual uint64_t GetGarlicKey (uint8_t * key) const { return 0; }; // return tag
 	};
 
-	struct ECIESTunnelHopConfig: public TunnelHopConfig, public i2p::crypto::NoiseSymmetricState
-	{
-		ECIESTunnelHopConfig (std::shared_ptr<const i2p::data::IdentityEx> r):
-			TunnelHopConfig (r) {};
-		void EncryptECIES (const uint8_t * clearText, size_t len, uint8_t * encrypted);
-		bool DecryptECIES (const uint8_t * key, const uint8_t * nonce, const uint8_t * encrypted, size_t len, uint8_t * clearText) const;
-	};
-
-	struct LongECIESTunnelHopConfig: public ECIESTunnelHopConfig
-	{
-		LongECIESTunnelHopConfig (std::shared_ptr<const i2p::data::IdentityEx> r):
-			ECIESTunnelHopConfig (r) {};
-		uint8_t GetRetCode (const uint8_t * records) const override
-		{ return (records + recordIndex*TUNNEL_BUILD_RECORD_SIZE)[ECIES_BUILD_RESPONSE_RECORD_RET_OFFSET]; };
-		void CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID) override;
-		bool DecryptBuildResponseRecord (uint8_t * records) const override;
-	};
-
-	struct ShortECIESTunnelHopConfig: public ECIESTunnelHopConfig
+	struct ShortECIESTunnelHopConfig: public TunnelHopConfig, public i2p::crypto::NoiseSymmetricState
 	{
 		ShortECIESTunnelHopConfig (std::shared_ptr<const i2p::data::IdentityEx> r):
-			ECIESTunnelHopConfig (r) {};
+			TunnelHopConfig (r) {};
+
+		void EncryptECIES (const uint8_t * clearText, uint8_t * encrypted);
+
 		uint8_t GetRetCode (const uint8_t * records) const override
 		{ return (records + recordIndex*SHORT_TUNNEL_BUILD_RECORD_SIZE)[SHORT_RESPONSE_RECORD_RET_OFFSET]; };
 		void CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID) override;
@@ -77,35 +62,26 @@ namespace tunnel
 		uint64_t GetGarlicKey (uint8_t * key) const override;
 	};
 
-	struct PhonyTunnelHopConfig: public ECIESTunnelHopConfig
+	struct ShortPhonyTunnelHopConfig: public TunnelHopConfig
 	{
-		PhonyTunnelHopConfig (): ECIESTunnelHopConfig (nullptr) {}
+		ShortPhonyTunnelHopConfig (): TunnelHopConfig (nullptr) {}
 		uint8_t GetRetCode (const uint8_t * records) const override { return 0; }
 		bool DecryptBuildResponseRecord (uint8_t * records) const override { return true; }
 		void DecryptRecord (uint8_t * records, int index) const override {} // do nothing
-	};
-
-	struct LongPhonyTunnelHopConfig: public PhonyTunnelHopConfig
-	{
-		void CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID) override;
-	};	
-
-	struct ShortPhonyTunnelHopConfig: public PhonyTunnelHopConfig
-	{
 		void CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID) override;
 	};
-	
+
 	class TunnelConfig
 	{
 		public:
 
 			TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers,
-				bool isShort, i2p::data::RouterInfo::CompatibleTransports farEndTransports = i2p::data::RouterInfo::eAllTransports); // inbound
+				i2p::data::RouterInfo::CompatibleTransports farEndTransports = i2p::data::RouterInfo::eAllTransports); // inbound
 
 			TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers,
-				uint32_t replyTunnelID, const i2p::data::IdentHash& replyIdent, bool isShort,
+				uint32_t replyTunnelID, const i2p::data::IdentHash& replyIdent,
 				i2p::data::RouterInfo::CompatibleTransports farEndTransports = i2p::data::RouterInfo::eAllTransports); // outbound
-				
+
 			virtual ~TunnelConfig ()
 			{
 				TunnelHopConfig * hop = m_FirstHop;
@@ -117,8 +93,6 @@ namespace tunnel
 					delete tmp;
 				}
 			}
-
-			bool IsShort () const { return m_IsShort; }
 
 			i2p::data::RouterInfo::CompatibleTransports GetFarEndTransports () const
 			{
@@ -188,15 +162,15 @@ namespace tunnel
 				return peers;
 			}
 
-			size_t GetRecordSize () const { return m_IsShort ? SHORT_TUNNEL_BUILD_RECORD_SIZE : TUNNEL_BUILD_RECORD_SIZE; };
+			size_t GetRecordSize () const { return SHORT_TUNNEL_BUILD_RECORD_SIZE; };
 
 			void CreatePhonyHop ();
 			void DeletePhonyHop ();
-			
+
 		protected:
 
 			// this constructor can't be called from outside
-			TunnelConfig (): m_FirstHop (nullptr), m_LastHop (nullptr), m_IsShort (false),
+			TunnelConfig (): m_FirstHop (nullptr), m_LastHop (nullptr),
 				m_FarEndTransports (i2p::data::RouterInfo::eAllTransports)
 			{
 			}
@@ -208,7 +182,6 @@ namespace tunnel
 		private:
 
 			TunnelHopConfig * m_FirstHop, * m_LastHop;
-			bool m_IsShort;
 			i2p::data::RouterInfo::CompatibleTransports m_FarEndTransports;
 	};
 

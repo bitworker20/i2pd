@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -33,6 +33,7 @@
 #include "version.h"
 #include "util.h"
 #include "KadDHT.h"
+#include "IdentMetrics.h"
 
 namespace i2p
 {
@@ -41,24 +42,27 @@ namespace data
 	const int NETDB_MIN_ROUTERS = 90;
 	const int NETDB_MIN_FLOODFILLS = 5;
 	const int NETDB_MIN_TRANSPORTS = 10 ; // otherwise assume offline
-	const int NETDB_NUM_FLOODFILLS_THRESHOLD = 1800;
+	const int NETDB_NUM_FLOODFILLS_THRESHOLD = 2000;
 	const int NETDB_NUM_ROUTERS_THRESHOLD = 4*NETDB_NUM_FLOODFILLS_THRESHOLD;
 	const int NETDB_TUNNEL_CREATION_RATE_THRESHOLD = 10; // in %
-	const int NETDB_CHECK_FOR_EXPIRATION_UPTIME = 600; // 10 minutes, in seconds  
+	const int NETDB_CHECK_FOR_EXPIRATION_UPTIME = 600; // 10 minutes, in seconds
 	const int NETDB_FLOODFILL_EXPIRATION_TIMEOUT = 60 * 60; // 1 hour, in seconds
 	const int NETDB_MIN_EXPIRATION_TIMEOUT = 90 * 60; // 1.5 hours
 	const int NETDB_MAX_EXPIRATION_TIMEOUT = 27 * 60 * 60; // 27 hours
 	const int NETDB_MAX_OFFLINE_EXPIRATION_TIMEOUT = 180; // in days
 	const int NETDB_EXPIRATION_TIMEOUT_THRESHOLD = 2*60; // 2 minutes
-	const int NETDB_MIN_HIGHBANDWIDTH_VERSION = MAKE_VERSION_NUMBER(0, 9, 58); // 0.9.58
-	const int NETDB_MIN_FLOODFILL_VERSION = MAKE_VERSION_NUMBER(0, 9, 59); // 0.9.59
+	const int NETDB_MIN_HIGHBANDWIDTH_VERSION = MAKE_VERSION_NUMBER(0, 9, 62); // 0.9.62
+	const int NETDB_MIN_FLOODFILL_VERSION = MAKE_VERSION_NUMBER(0, 9, 62); // 0.9.62
 	const int NETDB_MIN_SHORT_TUNNEL_BUILD_VERSION = MAKE_VERSION_NUMBER(0, 9, 51); // 0.9.51
 	const int NETDB_MIN_PEER_TEST_VERSION = MAKE_VERSION_NUMBER(0, 9, 62); // 0.9.62
+	const int NETDB_MIN_ALLOWED_VERSION = MAKE_VERSION_NUMBER(0, 9, 58); // 0.9.58
 	const size_t NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES = 16;
 	const size_t NETDB_MAX_EXPLORATORY_SELECTION_SIZE = 500;
 	const int NETDB_EXPLORATORY_SELECTION_UPDATE_INTERVAL = 82; // in seconds. for floodfill
 	const int NETDB_NEXT_DAY_ROUTER_INFO_THRESHOLD = 45; // in minutes
 	const int NETDB_NEXT_DAY_LEASESET_THRESHOLD = 10; // in minutes
+	const int NETDB_MIN_PERSIST_INTERVAL = 15; // 15 secs in seconds
+	const int NETDB_MAX_PERSIST_INTERVAL = 1800; // 30 minutes in seconds
 
 	/** function for visiting a leaseset stored in a floodfill */
 	typedef std::function<void(const IdentHash, std::shared_ptr<LeaseSet>)> LeaseSetVisitor;
@@ -88,10 +92,12 @@ namespace data
 			std::shared_ptr<RouterProfile> FindRouterProfile (const IdentHash& ident) const;
 
 			void RequestDestination (const IdentHash& destination, RequestedDestination::RequestComplete requestComplete = nullptr, bool direct = true);
-			
+
 			std::shared_ptr<const RouterInfo> GetRandomRouter () const;
-			std::shared_ptr<const RouterInfo> GetRandomRouter (std::shared_ptr<const RouterInfo> compatibleWith, bool reverse, bool endpoint, bool clientTunnel) const;
-			std::shared_ptr<const RouterInfo> GetHighBandwidthRandomRouter (std::shared_ptr<const RouterInfo> compatibleWith, bool reverse, bool endpoint) const;
+			std::shared_ptr<const RouterInfo> GetRandomRouter (std::shared_ptr<const RouterInfo> compatibleWith,
+				bool reverse, bool endpoint, bool clientTunnel, PeerOrdering * peerOrdering = nullptr) const;
+			std::shared_ptr<const RouterInfo> GetHighBandwidthRandomRouter (std::shared_ptr<const RouterInfo> compatibleWith,
+				bool reverse, bool endpoint, PeerOrdering * peerOrdering = nullptr) const;
 			std::shared_ptr<const RouterInfo> GetRandomSSU2PeerTestRouter (bool v4, const std::unordered_set<IdentHash>& excluded) const;
 			std::shared_ptr<const RouterInfo> GetRandomSSU2Introducer (bool v4, const std::unordered_set<IdentHash>& excluded) const;
 			std::shared_ptr<const RouterInfo> GetClosestFloodfill (const IdentHash& destination, const std::unordered_set<IdentHash>& excluded, bool nextDay = false) const;
@@ -124,9 +130,9 @@ namespace data
 
 			void ClearRouterInfos () { m_RouterInfos.clear (); };
 			template<typename... TArgs>
-			std::shared_ptr<RouterInfo::Buffer> NewRouterInfoBuffer (TArgs&&... args) 
-			{ 
-				return m_RouterInfoBuffersPool.AcquireSharedMt (std::forward<TArgs>(args)...); 
+			std::shared_ptr<RouterInfo::Buffer> NewRouterInfoBuffer (TArgs&&... args)
+			{
+				return m_RouterInfoBuffersPool.AcquireSharedMt (std::forward<TArgs>(args)...);
 			}
 			bool PopulateRouterInfoBuffer (std::shared_ptr<RouterInfo> r);
 			std::shared_ptr<RouterInfo::Address> NewRouterInfoAddress () { return m_RouterInfoAddressesPool.AcquireSharedMt (); };
@@ -146,9 +152,9 @@ namespace data
 			void Load ();
 			bool LoadRouterInfo (const std::string& path, uint64_t ts);
 			void SaveUpdated ();
-			void PersistRouters (std::list<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer> > >&& update, 
+			void PersistRouters (std::list<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer> > >&& update,
 				std::list<std::string>&& remove);
-			void Run (); 
+			void Run ();
 			void Flood (const IdentHash& ident, std::shared_ptr<I2NPMessage> floodMsg, bool andNextDay = false);
 			void ManageRouterInfos ();
 			void ManageLeaseSets ();
@@ -164,9 +170,15 @@ namespace data
 
 			void HandleDatabaseStoreMsg (std::shared_ptr<const I2NPMessage> msg);
 			void HandleDatabaseLookupMsg (std::shared_ptr<const I2NPMessage> msg);
-			void HandleNTCP2RouterInfoMsg (std::shared_ptr<const I2NPMessage> m);
 
 		private:
+
+			i2p::util::MemoryPoolMt<RouterInfo::Buffer> m_RouterInfoBuffersPool;
+			i2p::util::MemoryPoolMt<RouterInfo::Address> m_RouterInfoAddressesPool;
+			i2p::util::MemoryPoolMt<RouterInfo::Addresses> m_RouterInfoAddressVectorsPool;
+			i2p::util::MemoryPoolMt<Lease> m_LeasesPool;
+			i2p::util::MemoryPoolMt<IdentityEx> m_IdentitiesPool;
+			i2p::util::MemoryPoolMt<RouterProfile> m_RouterProfilesPool;
 
 			mutable std::mutex m_LeaseSetsMutex;
 			std::unordered_map<IdentHash, std::shared_ptr<LeaseSet> > m_LeaseSets;
@@ -188,17 +200,11 @@ namespace data
 
 			bool m_PersistProfiles;
 			std::future<void> m_SavingProfiles, m_DeletingProfiles, m_ApplyingProfileUpdates, m_PersistingRouters;
+			uint64_t m_NetDbPersistInterval; // in milliseconds
 
 			std::vector<std::shared_ptr<const RouterInfo> > m_ExploratorySelection;
 			uint64_t m_LastExploratorySelectionUpdateTime; // in monotonic seconds
 			std::mt19937 m_Rng;
-
-			i2p::util::MemoryPoolMt<RouterInfo::Buffer> m_RouterInfoBuffersPool;
-			i2p::util::MemoryPoolMt<RouterInfo::Address> m_RouterInfoAddressesPool;
-			i2p::util::MemoryPoolMt<RouterInfo::Addresses> m_RouterInfoAddressVectorsPool;
-			i2p::util::MemoryPoolMt<Lease> m_LeasesPool;
-			i2p::util::MemoryPoolMt<IdentityEx> m_IdentitiesPool;
-			i2p::util::MemoryPoolMt<RouterProfile> m_RouterProfilesPool;
 	};
 
 	extern NetDb netdb;

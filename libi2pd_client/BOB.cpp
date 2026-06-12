@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -32,8 +32,8 @@ namespace client
 			HandleStreamReceive (boost::system::error_code (), dest.size ());
 		}
 		Receive ();
-	}	
-	
+	}
+
 	BOBI2PInboundTunnel::BOBI2PInboundTunnel (const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<ClientDestination> localDestination):
 		BOBI2PTunnel (localDestination), m_Acceptor (localDestination->GetService (), ep)
 	{
@@ -351,8 +351,8 @@ namespace client
 			os << " " << msg;
 		os << std::endl;
 		Send ();
-	}	
-		
+	}
+
 	void BOBCommandSession::SendReplyOK (const std::vector<std::string_view>& strings)
 	{
 		std::ostream os(&m_SendBuffer);
@@ -362,8 +362,8 @@ namespace client
 			os << it;
 		os << std::endl;
 		Send ();
-	}	
-		
+	}
+
 	void BOBCommandSession::SendReplyError (std::string_view msg)
 	{
 		std::ostream os(&m_SendBuffer);
@@ -413,7 +413,7 @@ namespace client
 		const bool starting = destExists(dest.get ()) && !destReady(dest.get ());
 		const bool running = destExists(dest.get ()) && destReady(dest.get ());
 		const bool stopping = false;
-		
+
 		const i2p::client::I2PService* proxy = m_Owner.GetProxy(nickname);
 		const std::string proxyType = getProxyType(proxy);
 		const bool proxyStatus = isProxyRunning(proxy);
@@ -499,9 +499,9 @@ namespace client
 				m_CurrentDestination->CreateOutboundTunnel (m_OutHost, m_OutPort, m_IsQuiet);
 			m_CurrentDestination->Start ();
 		}
-		else 
+		else
 		{
-			switch (*m_tunnelType) 
+			switch (*m_tunnelType)
 			{
 				case TunnelType::SOCKS:
 					try
@@ -749,13 +749,13 @@ namespace client
 				SendReplyError ("Address Not found");
 				return;
 			}
-			auto localDestination = (m_CurrentDestination && m_CurrentDestination->IsRunning ()) ? 
+			auto localDestination = (m_CurrentDestination && m_CurrentDestination->IsRunning ()) ?
 				m_CurrentDestination->GetLocalDestination () : i2p::client::context.GetSharedLocalDestination ();
 			if (!localDestination)
 			{
 				SendReplyError ("No local destination");
 				return;
-			}	
+			}
 			if (addr->IsIdentHash ())
 			{
 				// we might have leaseset already
@@ -816,7 +816,7 @@ namespace client
 				SendReplyError ("Address Not found");
 				return;
 			}
-			auto localDestination = (m_CurrentDestination && m_CurrentDestination->IsRunning ()) ? 
+			auto localDestination = (m_CurrentDestination && m_CurrentDestination->IsRunning ()) ?
 				m_CurrentDestination->GetLocalDestination () : i2p::client::context.GetSharedLocalDestination ();
 			if (!localDestination)
 			{
@@ -828,8 +828,8 @@ namespace client
 				// we might have leaseset already
 				auto leaseSet = localDestination->FindLeaseSet (addr->identHash);
 				if (leaseSet)
-				{	
-					boost::asio::post (localDestination->GetService (), 
+				{
+					boost::asio::post (localDestination->GetService (),
 						std::bind (&BOBCommandSession::SendPing, shared_from_this (), leaseSet));
 					return;
 				}
@@ -844,7 +844,7 @@ namespace client
 		}
 		else
 			SendReplyError ("empty ping address");
-	}	
+	}
 
 	void BOBCommandSession::SendPing (std::shared_ptr<const i2p::data::LeaseSet> ls)
 	{
@@ -852,8 +852,8 @@ namespace client
 		{
 			SendReplyError ("LeaseSet Not found");
 			return;
-		}	
-		auto localDestination = (m_CurrentDestination && m_CurrentDestination->IsRunning ()) ? 
+		}
+		auto localDestination = (m_CurrentDestination && m_CurrentDestination->IsRunning ()) ?
 				m_CurrentDestination->GetLocalDestination () : i2p::client::context.GetSharedLocalDestination ();
 		if (!localDestination)
 		{
@@ -866,8 +866,8 @@ namespace client
 			SendReplyError ("No streaming destination");
 			return;
 		}
-		auto timer = std::make_shared<boost::asio::deadline_timer>(localDestination->GetService ());
-		timer->expires_from_now (boost::posix_time::milliseconds(BOB_PING_TIMEOUT));
+		auto timer = std::make_shared<boost::asio::steady_timer>(localDestination->GetService ());
+		timer->expires_after (std::chrono::milliseconds(BOB_PING_TIMEOUT));
 		timer->async_wait ([streamingDestination, s = shared_from_this ()](const boost::system::error_code& ecode)
 		{
 			if (ecode != boost::asio::error::operation_aborted)
@@ -885,14 +885,14 @@ namespace client
 				if (t < 0) t = 0;
 				streamingDestination->ResetPongHandler ();
 				timer->cancel ();
-				if (from) 
+				if (from)
 					s->SendReplyOK ({"pong ", "from ", from->ToBase32(), ".b32.i2p: time=", std::to_string (t), " ms"});
 				else
-					s->SendReplyOK ({"pong: time=", std::to_string (t), " ms"});         
+					s->SendReplyOK ({"pong: time=", std::to_string (t), " ms"});
 			});
 		streamingDestination->SendPing (ls);
-	}	
-		
+	}
+
 	void BOBCommandSession::ClearCommandHandler (const char * operand, size_t len)
 	{
 		LogPrint (eLogDebug, "BOB: clear");
@@ -931,7 +931,7 @@ namespace client
 		if (value)
 		{
 			*(const_cast<char *>(value)) = 0;
-			m_Options[operand] = value + 1;
+			m_Options.Insert (operand, value + 1);
 			SendReplyOK ({ "option ", operand, " set to ", value + 1 });
 			*(const_cast<char *>(value)) = '=';
 		}
@@ -991,7 +991,7 @@ namespace client
 			SendReplyError("No such command");
 		}
 	}
-	
+
 	void BOBCommandSession::SetTunnelTypeCommandHandler (const char * operand, size_t len)
 	{
 		std::string_view sv(operand, len);
@@ -1000,13 +1000,13 @@ namespace client
 			{
 				m_tunnelType = TunnelType::SOCKS;
 				SendReplyOK ("tunnel type set to SOCKS");
-			} 
+			}
 			else if (sv == "httpproxy")
 			{
 				m_tunnelType = TunnelType::HTTP_PROXY;
 				SendReplyOK ("tunnel type set to HTTP proxy");
-			} 
-			else 
+			}
+			else
 			{
 				m_tunnelType.reset();
 				SendReplyError ("no tunnel type has been set");
@@ -1035,7 +1035,7 @@ namespace client
 		m_CommandHandlers[BOB_COMMAND_QUIET] = &BOBCommandSession::QuietCommandHandler;
 		m_CommandHandlers[BOB_COMMAND_LOOKUP] = &BOBCommandSession::LookupCommandHandler;
 		m_CommandHandlers[BOB_COMMAND_LOOKUP_LOCAL] = &BOBCommandSession::LookupLocalCommandHandler;
-		m_CommandHandlers[BOB_COMMAND_PING] = &BOBCommandSession::PingCommandHandler;	
+		m_CommandHandlers[BOB_COMMAND_PING] = &BOBCommandSession::PingCommandHandler;
 		m_CommandHandlers[BOB_COMMAND_CLEAR] = &BOBCommandSession::ClearCommandHandler;
 		m_CommandHandlers[BOB_COMMAND_LIST] = &BOBCommandSession::ListCommandHandler;
 		m_CommandHandlers[BOB_COMMAND_OPTION] = &BOBCommandSession::OptionCommandHandler;
@@ -1059,12 +1059,14 @@ namespace client
 		m_HelpStrings[BOB_COMMAND_INPORT] = BOB_HELP_INPORT;
 		m_HelpStrings[BOB_COMMAND_QUIET] = BOB_HELP_QUIET;
 		m_HelpStrings[BOB_COMMAND_LOOKUP] = BOB_HELP_LOOKUP;
+		m_HelpStrings[BOB_COMMAND_LOOKUP_LOCAL] = BOB_HELP_LOOKUP_LOCAL;
 		m_HelpStrings[BOB_COMMAND_CLEAR] = BOB_HELP_CLEAR;
 		m_HelpStrings[BOB_COMMAND_LIST] = BOB_HELP_LIST;
 		m_HelpStrings[BOB_COMMAND_OPTION] = BOB_HELP_OPTION;
 		m_HelpStrings[BOB_COMMAND_STATUS] = BOB_HELP_STATUS;
-		m_HelpStrings[BOB_COMMAND_HELP] = BOB_HELP_HELP;
 		m_HelpStrings[BOB_COMMAND_SETTUNNELTYPE] = BOB_HELP_SETTUNNELTYPE;
+		m_HelpStrings[BOB_COMMAND_PING] = BOB_HELP_PING;
+		m_HelpStrings[BOB_COMMAND_HELP] = BOB_HELP_HELP;
 	}
 
 	BOBCommandChannel::~BOBCommandChannel ()
@@ -1109,12 +1111,12 @@ namespace client
 			return it->second;
 		return nullptr;
 	}
-	
+
 	void BOBCommandChannel::SetProxy (const std::string& name, std::unique_ptr<I2PService> proxy)
 	{
 		m_proxy[name] = std::move(proxy);
 	}
-	
+
 	const I2PService* BOBCommandChannel::GetProxy(const std::string& name) const
 	{
 		auto it = m_proxy.find(name);
@@ -1122,7 +1124,7 @@ namespace client
 			return it->second.get();
 		return nullptr;
 	}
-	
+
 	void BOBCommandChannel::RemoveProxy(const std::string& name)
 	{
 		auto it = m_proxy.find (name);

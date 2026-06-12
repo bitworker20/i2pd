@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -17,6 +17,7 @@
 #include <vector>
 #include "Base.h"
 #include "Signature.h"
+#include "Tag.h"
 
 namespace i2p
 {
@@ -24,7 +25,7 @@ namespace crypto
 {
 	class CryptoKeyEncryptor;
 	class CryptoKeyDecryptor;
-}	
+}
 namespace data
 {
 	typedef Tag<32> IdentHash;
@@ -32,6 +33,8 @@ namespace data
 	{
 		return ident.ToBase64 ().substr (0, 4);
 	}
+
+	std::vector<IdentHash> ExtractIdentHashes (std::string_view hashes);
 
 	struct Keys
 	{
@@ -73,7 +76,7 @@ namespace data
 	const uint16_t CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD = 5;
 	const uint16_t CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD = 6;
 	const uint16_t CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD = 7;
-	
+
 	const uint16_t SIGNING_KEY_TYPE_DSA_SHA1 = 0;
 	const uint16_t SIGNING_KEY_TYPE_ECDSA_SHA256_P256 = 1;
 	const uint16_t SIGNING_KEY_TYPE_ECDSA_SHA384_P384 = 2;
@@ -86,8 +89,7 @@ namespace data
 	const uint16_t SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256 = 9;
 	const uint16_t SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512 = 10; // approved by FSB
 	const uint16_t SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519 = 11; // for LeaseSet2 only
-	const uint16_t SIGNING_KEY_TYPE_MLDSA44 = 12;
-	
+
 	typedef uint16_t SigningKeyType;
 	typedef uint16_t CryptoKeyType;
 
@@ -135,7 +137,7 @@ namespace data
 		private:
 
 			void CreateVerifier ();
-			
+
 		private:
 
 			Identity m_StandardIdentity;
@@ -143,10 +145,10 @@ namespace data
 			std::unique_ptr<i2p::crypto::Verifier> m_Verifier;
 			size_t m_ExtendedLen;
 			union
-			{	
-				uint8_t m_ExtendedBuffer[MAX_EXTENDED_BUFFER_SIZE]; 
+			{
+				uint8_t m_ExtendedBuffer[MAX_EXTENDED_BUFFER_SIZE];
 				uint8_t * m_ExtendedBufferPtr;
-			};	
+			};
 	};
 
 	size_t GetIdentityBufferLen (const uint8_t * buf, size_t len); // return actual identity length in buffer
@@ -206,23 +208,6 @@ namespace data
 			size_t m_TransientSignatureLen = 0;
 			size_t m_TransientSigningPrivateKeyLen = 0;
 	};
-
-	// kademlia
-	struct XORMetric
-	{
-		union
-		{
-			uint8_t metric[32];
-			uint64_t metric_ll[4];
-		};
-
-		void SetMin () { memset (metric, 0, 32); };
-		void SetMax () { memset (metric, 0xFF, 32); };
-		bool operator< (const XORMetric& other) const { return memcmp (metric, other.metric, 32) < 0; };
-	};
-
-	IdentHash CreateRoutingKey (const IdentHash& ident, bool nextDay = false);
-	XORMetric operator^(const IdentHash& key1, const IdentHash& key2);
 
 	// destination for delivery instructions
 	class RoutingDestination

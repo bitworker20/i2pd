@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -20,52 +20,52 @@ namespace i2p
 namespace http
 {
 	// list of valid HTTP methods
-	static constexpr std::array<std::string_view, 16> HTTP_METHODS = 
+	static constexpr std::array<std::string_view, 16> HTTP_METHODS =
 	{
 		"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "CONNECT", // HTTP basic methods
 		"COPY", "LOCK", "MKCOL", "MOVE", "PROPFIND", "PROPPATCH", "UNLOCK", "SEARCH" // WebDAV methods, for SEARCH see rfc5323
 	};
 
 	// list of valid HTTP versions
-	static constexpr std::array<std::string_view, 2> HTTP_VERSIONS = 
+	static constexpr std::array<std::string_view, 2> HTTP_VERSIONS =
 	{
 		"HTTP/1.0", "HTTP/1.1"
 	};
-	
-	static constexpr std::array<const char *, 7> weekdays = 
+
+	static constexpr std::array<const char *, 7> weekdays =
 	{
 		"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
 	};
-	
-	static constexpr std::array<const char *, 12> months = 
+
+	static constexpr std::array<const char *, 12> months =
 	{
 		"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 	};
 
-	static inline bool is_http_version(std::string_view str) 
+	static inline bool is_http_version(std::string_view str)
 	{
 		return std::find(HTTP_VERSIONS.begin(), HTTP_VERSIONS.end(), str) != std::end(HTTP_VERSIONS);
 	}
 
-	static inline bool is_http_method(std::string_view str) 
+	static inline bool is_http_method(std::string_view str)
 	{
 		return std::find(HTTP_METHODS.begin(), HTTP_METHODS.end(), str) != std::end(HTTP_METHODS);
 	}
-	
-	static void strsplit(std::string_view line, std::vector<std::string_view> &tokens, char delim, std::size_t limit = 0) 
-	{	
+
+	static void strsplit(std::string_view line, std::vector<std::string_view> &tokens, char delim, std::size_t limit = 0)
+	{
 		size_t count = 1, pos;
 		while ((pos = line.find (delim)) != line.npos)
 		{
 			count++;
 			if (limit > 0 && count >= limit) delim = '\n'; // reset delimiter
 			tokens.push_back (line.substr (0, pos));
-			line = line.substr (pos + 1);	
+			line = line.substr (pos + 1);
 		}
 		if (!line.empty ()) tokens.push_back (line);
 	}
-	
+
 	static std::pair<std::string, std::string> parse_header_line(std::string_view line)
 	{
 		std::size_t pos = 0;
@@ -94,17 +94,17 @@ namespace http
 		out = buf;
 	}
 
-	bool URL::parse(const char *str, std::size_t len) 
+	bool URL::parse(const char *str, std::size_t len)
 	{
 		return parse({str, len ? len : strlen(str)});
 	}
 
-	bool URL::parse(std::string_view url) 
+	bool URL::parse(std::string_view url)
 	{
 		if (url.empty ()) return false;
 		std::size_t pos_p = 0; /* < current parse position */
 		std::size_t pos_c = 0; /* < work position */
-		if(url.at(0) != '/' || pos_p > 0) 
+		if(url.at(0) != '/' || pos_p > 0)
 		{
 			std::size_t pos_s = 0;
 
@@ -209,7 +209,7 @@ namespace http
 		return true;
 	}
 
-	bool URL::parse_query(std::map<std::string, std::string> & params) 
+	bool URL::parse_query(std::map<std::string, std::string> & params)
 	{
 		std::vector<std::string_view> tokens;
 		strsplit(query, tokens, '&');
@@ -287,12 +287,21 @@ namespace http
 		headers.erase(name);
 	}
 
-	int HTTPReq::parse(const char *buf, size_t len) 
+	std::string HTTPMsg::get_header(const std::string& name) const
+	{
+		auto it = headers.find(name);
+		if (it == headers.end())
+			return "";
+		else
+			return it->second;
+	}
+
+	int HTTPReq::parse(const char *buf, size_t len)
 	{
 		return parse({buf, len});
 	}
 
-	int HTTPReq::parse(std::string_view str) 
+	int HTTPReq::parse(std::string_view str)
 	{
 		enum { REQ_LINE, HEADER_LINE } expect = REQ_LINE;
 		std::size_t eoh = str.find(HTTP_EOH); /* request head size */
@@ -302,14 +311,14 @@ namespace http
 		if (eoh == std::string::npos)
 			return 0; /* str not contains complete request */
 
-		while ((eol = str.find(CRLF, pos)) != std::string::npos) 
+		while ((eol = str.find(CRLF, pos)) != std::string::npos)
 		{
-			if (expect == REQ_LINE) 
+			if (expect == REQ_LINE)
 			{
 				std::string_view line = str.substr(pos, eol - pos);
 				std::vector<std::string_view> tokens;
 				strsplit(line, tokens, ' ');
-				
+
 				if (tokens.size() != 3)
 					return -1;
 				if (!is_http_method(tokens[0]))
@@ -363,7 +372,7 @@ namespace http
 	void HTTPReq::UpdateHeader (const std::string& name, const std::string& value)
 	{
 		for (auto& it : headers)
-			if (it.first == name)
+			if (boost::iequals(it.first, name))
 			{
 				it.second = value;
 				break;
@@ -374,7 +383,7 @@ namespace http
 	{
 		for (auto it = headers.begin (); it != headers.end ();)
 		{
-			if (!it->first.compare(0, name.length (), name) && it->first != exempt)
+			if (boost::istarts_with(it->first, name) && !boost::iequals(it->first, exempt))
 				it = headers.erase (it);
 			else
 				it++;
@@ -384,7 +393,7 @@ namespace http
 	std::string HTTPReq::GetHeader (std::string_view name) const
 	{
 		for (auto& it : headers)
-			if (it.first == name)
+			if (boost::iequals(it.first, name))
 				return it.second;
 		return "";
 	}
@@ -393,7 +402,7 @@ namespace http
 	{
 		size_t num = 0;
 		for (auto& it : headers)
-			if (it.first == name) num++;
+			if (boost::iequals(it.first, name)) num++;
 		return num;
 	}
 
@@ -432,12 +441,12 @@ namespace http
 		return length;
 	}
 
-	int HTTPRes::parse(const char *buf, size_t len) 
+	int HTTPRes::parse(const char *buf, size_t len)
 	{
 		return parse({buf,len});
 	}
 
-	int HTTPRes::parse(std::string_view str) 
+	int HTTPRes::parse(std::string_view str)
 	{
 		enum { RES_LINE, HEADER_LINE } expect = RES_LINE;
 		std::size_t eoh = str.find(HTTP_EOH); /* request head size */
@@ -446,9 +455,9 @@ namespace http
 		if (eoh == std::string::npos)
 			return 0; /* str not contains complete request */
 
-		while ((eol = str.find(CRLF, pos)) != std::string::npos) 
+		while ((eol = str.find(CRLF, pos)) != std::string::npos)
 		{
-			if (expect == RES_LINE) 
+			if (expect == RES_LINE)
 			{
 				std::string_view line = str.substr(pos, eol - pos);
 				std::vector<std::string_view> tokens;
@@ -466,8 +475,8 @@ namespace http
 				version = tokens[0];
 				status  = tokens[2];
 				expect  = HEADER_LINE;
-			} 
-			else 
+			}
+			else
 			{
 				std::string_view line = str.substr(pos, eol - pos);
 				auto p = parse_header_line(line);
@@ -505,10 +514,10 @@ namespace http
 		return ss.str();
 	}
 
-	std::string_view HTTPCodeToStatus(int code) 
+	std::string_view HTTPCodeToStatus(int code)
 	{
 		std::string_view ptr;
-		switch (code) 
+		switch (code)
 		{
 			case 105: ptr = "Name Not Resolved"; break;
 			/* success */
@@ -536,21 +545,34 @@ namespace http
 		return ptr;
 	}
 
-	std::string UrlDecode(std::string_view data, bool allow_null)
+	std::string UrlDecode(std::string_view url, bool allow_null)
 	{
-		std::string decoded(data);
-		size_t pos = 0;
-		while ((pos = decoded.find('%', pos)) != std::string::npos)
+		std::string decoded;
+		decoded.reserve (url.length ());
+		size_t start = 0;
+		for (size_t i = 0; i < url.length (); i++)
 		{
-			char c = std::stol(decoded.substr(pos + 1, 2), nullptr, 16);
-			if (!c && !allow_null)
+			auto c = url[i];
+			if (c == '%')
 			{
-				pos += 3;
-				continue;
+				decoded.append (url, start, i - start);
+				if (i + 2 <= url.length ())
+				{
+					unsigned char ch;
+					auto res = std::from_chars(url.data() + i + 1, url.data() + i + 3, ch, 16);
+					if (res.ec == std::errc() && (ch || allow_null))
+						decoded += ch;
+					else
+						decoded.append (url, i, 3);
+					i += 2;
+					start = i + 1;
+				}
+				else
+					break;
 			}
-			decoded.replace(pos, 3, 1, c);
-			pos++;
 		}
+		if (start < url.length ())
+			decoded.append (url, start);
 		return decoded;
 	}
 

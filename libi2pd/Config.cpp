@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -28,17 +28,27 @@ namespace config {
 	options_description m_OptionsDesc;
 	variables_map m_Options;
 
+#if defined(_WIN32)
+#define path_to_file(file) "%appdata%\\i2pd\\" #file
+#elif defined(MAC_OSX)
+#define path_to_file(file) "~/Library/Application Support/i2pd/" #file
+#elif defined(__HAIKU__)
+#define path_to_file(file) "~/config/settings/i2pd/" #file
+#else
+#define path_to_file(file) "~/.i2pd/" #file " or /var/lib/i2pd/" #file
+#endif
+
 	void Init()
 	{
 		options_description general("General options");
 		general.add_options()
 			("help",                                                          "Show this message")
 			("version",                                                       "Show i2pd version")
-			("conf", value<std::string>()->default_value(""),                 "Path to main i2pd config file (default: try ~/.i2pd/i2pd.conf or /var/lib/i2pd/i2pd.conf)")
-			("tunconf", value<std::string>()->default_value(""),              "Path to config with tunnels list and options (default: try ~/.i2pd/tunnels.conf or /var/lib/i2pd/tunnels.conf)")
-			("tunnelsdir", value<std::string>()->default_value(""),           "Path to extra tunnels' configs folder (default: ~/.i2pd/tunnels.d or /var/lib/i2pd/tunnels.d")
-			("certsdir", value<std::string>()->default_value(""),             "Path to certificates used for verifying .su3, families (default: ~/.i2pd/certificates or /var/lib/i2pd/certificates")
-			("pidfile", value<std::string>()->default_value(""),              "Path to pidfile (default: ~/i2pd/i2pd.pid or /var/lib/i2pd/i2pd.pid)")
+			("conf", value<std::string>()->default_value(""),                 "Path to main i2pd config file (default: try " path_to_file(i2pd.conf) ")")
+			("tunconf", value<std::string>()->default_value(""),              "Path to config with tunnels list and options (default: try " path_to_file(tunnels.conf) ")")
+			("tunnelsdir", value<std::string>()->default_value(""),           "Path to extra tunnels' configs folder (default: " path_to_file(tunnels.d))
+			("certsdir", value<std::string>()->default_value(""),             "Path to certificates used for verifying .su3, families (default: " path_to_file(certificates))
+			("pidfile", value<std::string>()->default_value(""),              "Path to pidfile (default: " path_to_file(i2pd.pid))
 			("log", value<std::string>()->default_value(""),                  "Logs destination: stdout, file, syslog (stdout if not set)")
 			("logfile", value<std::string>()->default_value(""),              "Path to logfile (stdout if not set, autodetect if daemon)")
 			("loglevel", value<std::string>()->default_value("warn"),         "Set the minimal level of log messages (debug, info, warn, error, none)")
@@ -71,6 +81,7 @@ namespace config {
 			("insomnia", bool_switch()->default_value(false),                 "Prevent system from sleeping (default: disabled)")
 			("close", value<std::string>()->default_value("ask"),             "Action on close: minimize, exit, ask")
 #endif
+			("stan", bool_switch()->default_value(false), 					  "Router has limited connectivity (default: false)")
 		;
 
 		options_description limits("Limits options");
@@ -79,10 +90,10 @@ namespace config {
 #if defined(__HAIKU__)
 			// Haiku's system default is 512, so we set 4096 explicitly
 			("limits.openfiles", value<uint16_t>()->default_value(4096),		"Maximum number of open files (4096 by default)")
-#else			
+#else
 			("limits.openfiles", value<uint16_t>()->default_value(0),         "Maximum number of open files (0 - use system default)")
-#endif			
-			("limits.transittunnels", value<uint32_t>()->default_value(10000), "Maximum active transit tunnels (default:10000)")
+#endif
+			("limits.transittunnels", value<uint32_t>()->default_value(25000), "Maximum active transit tunnels (default:25000)")
 			("limits.zombies", value<double>()->default_value(0),             "Minimum percentage of successfully created tunnels under which tunnel cleanup is paused (default [%]: 0.00)")
 			("limits.ntcpsoft", value<uint16_t>()->default_value(0),          "Ignored")
 			("limits.ntcphard", value<uint16_t>()->default_value(0),          "Ignored")
@@ -127,14 +138,16 @@ namespace config {
 			("httpproxy.i2cp.leaseSetType", value<std::string>()->default_value("3"), "Local destination's LeaseSet type")
 #if OPENSSL_PQ
 			("httpproxy.i2cp.leaseSetEncType", value<std::string>()->default_value("6,4,0"), "Local destination's LeaseSet encryption type")
-#else			
+#else
 			("httpproxy.i2cp.leaseSetEncType", value<std::string>()->default_value("4,0"), "Local destination's LeaseSet encryption type")
-#endif			
+#endif
 			("httpproxy.i2cp.leaseSetPrivKey", value<std::string>()->default_value(""), "LeaseSet private key")
 			("httpproxy.i2p.streaming.maxOutboundSpeed", value<std::string>()->default_value("1730000000"), "Max outbound speed of HTTP proxy stream in bytes/sec")
 			("httpproxy.i2p.streaming.maxInboundSpeed", value<std::string>()->default_value("1730000000"), "Max inbound speed of HTTP proxy stream in bytes/sec")
 			("httpproxy.i2p.streaming.profile", value<std::string>()->default_value("1"), "HTTP Proxy bandwidth usage profile. 1 - bulk(high), 2- interactive(low)")
 			("httpproxy.i2p.streaming.maxWindowSize", value<std::string>()->default_value("512"), "HTTP Proxy stream max window size. 512 by default")
+			("httpproxy.i2cp.closeIdleTime", value<uint64_t>()->default_value(0), "HTTP Proxy idle timeout in milliseconds after which destination stops building tunnels. Disabled by default(0)")
+			("httpproxy.i2cp.newDestOnResume", value<bool>()->default_value(false), "HTTP Proxy generate a new local destination when resuming from idle. false by default")
 		;
 
 		options_description socksproxy("SOCKS Proxy options");
@@ -159,14 +172,16 @@ namespace config {
 			("socksproxy.i2cp.leaseSetType", value<std::string>()->default_value("3"), "Local destination's LeaseSet type")
 #if OPENSSL_PQ
 			("socksproxy.i2cp.leaseSetEncType", value<std::string>()->default_value("6,4,0"), "Local destination's LeaseSet encryption type")
-#else			
+#else
 			("socksproxy.i2cp.leaseSetEncType", value<std::string>()->default_value("4,0"), "Local destination's LeaseSet encryption type")
-#endif			
+#endif
 			("socksproxy.i2cp.leaseSetPrivKey", value<std::string>()->default_value(""), "LeaseSet private key")
 			("socksproxy.i2p.streaming.maxOutboundSpeed", value<std::string>()->default_value("1730000000"), "Max outbound speed of SOCKS proxy stream in bytes/sec")
 			("socksproxy.i2p.streaming.maxInboundSpeed", value<std::string>()->default_value("1730000000"), "Max inbound speed of SOCKS proxy stream in bytes/sec")
 			("socksproxy.i2p.streaming.profile", value<std::string>()->default_value("1"), "SOCKS Proxy bandwidth usage profile. 1 - bulk(high), 2- interactive(low)")
 			("socksproxy.i2p.streaming.maxWindowSize", value<std::string>()->default_value("512"), "SOCKS Proxy stream max window size. 512 by default")
+			("socksproxy.i2cp.closeIdleTime", value<uint64_t>()->default_value(0), "SOCKS Proxy idle timeout in milliseconds after which destination stops building tunnels. Disabled by default(0)")
+			("socksproxy.i2cp.newDestOnResume", value<bool>()->default_value(false), "SOCKS Proxy generate a new local destination when resuming from idle. false by default")
 		;
 
 		options_description shareddest("Shared local destination options");
@@ -178,12 +193,12 @@ namespace config {
 			("shareddest.i2cp.leaseSetType", value<std::string>()->default_value("3"), "Shared local destination's LeaseSet type")
 #if OPENSSL_PQ
 			("shareddest.i2cp.leaseSetEncType", value<std::string>()->default_value("6,4,0"), "Shared local destination's LeaseSet encryption type")
-#else			
+#else
 			("shareddest.i2cp.leaseSetEncType", value<std::string>()->default_value("4,0"), "Shared local destination's LeaseSet encryption type")
-#endif			
+#endif
 			("shareddest.i2p.streaming.profile", value<std::string>()->default_value("2"), "Shared local destination bandwidth usage profile. 1 - bulk(high), 2- interactive(low)")
-		;	
-		
+		;
+
 		options_description sam("SAM bridge options");
 		sam.add_options()
 			("sam.enabled", value<bool>()->default_value(true),               "Enable or disable SAM Application bridge")
@@ -265,14 +280,18 @@ namespace config {
 				"https://reseed-pl.i2pd.xyz/,"
 				"https://www2.mk16.de/,"
 			    "https://i2p.novg.net/,"
-            	"https://reseed.stormycloud.org/"                                              
+            	"https://reseed.stormycloud.org/,"
+            	"https://reseed.sahil.world/,"
+            	"https://i2p.diyarciftci.xyz/,"
+            	"https://bybyh.de/"
 			),                                                            "Reseed URLs, separated by comma")
 			("reseed.yggurls", value<std::string>()->default_value(
 				"http://[324:71e:281a:9ed3::ace]:7070/,"
 				"http://[301:65b9:c7cd:9a36::1]:18801/,"
-				"http://[320:8936:ec1a:31f1::216]/,"
+				"http://[320:f09a:f09f:7acd::216]/,"
 				"http://[316:f9e0:f22e:a74f::216]/"
 			),                                                            "Reseed URLs through the Yggdrasil, separated by comma")
+			("reseed.followredirect", value<bool>()->default_value(false),         "Follow redirects when reseeding")
 		;
 
 		options_description addressbook("AddressBook options");
@@ -317,6 +336,11 @@ namespace config {
 			("ntcp2.port", value<uint16_t>()->default_value(0),            "Port to listen for incoming NTCP2 connections (default: auto)")
 			("ntcp2.addressv6", value<std::string>()->default_value("::"), "Address to publish NTCP2 with")
 			("ntcp2.proxy", value<std::string>()->default_value(""),       "Proxy URL for NTCP2 transport")
+#if OPENSSL_PQ
+			("ntcp2.version", value<int>()->default_value(4),              "Protocol version. 2 - standard, 3,4,5 - post quantum (default: 4)")
+#else
+			("ntcp2.version", value<int>()->default_value(2),              "Protocol version. 2 - standard, 3,4,5 - post quantum (default: 2)")
+#endif
 		;
 
 		options_description ssu2("SSU2 Options");
@@ -329,6 +353,7 @@ namespace config {
 			("ssu2.proxy", value<std::string>()->default_value(""),       "Socks5 proxy URL for SSU2 transport")
 			("ssu2.firewalled4", value<bool>()->default_value(false),     "Set ipv4 network status to Firewalled even if OK (default: disabled)")
 			("ssu2.firewalled6", value<bool>()->default_value(false),     "Set ipv6 network status to Firewalled even if OK (default: disabled)")
+			("ssu2.version", value<int>()->default_value(2),              "Protocol version. 2 - standard, 3,4 - post quantum (default: 2)")
 		;
 
 		options_description nettime("Time sync options");
@@ -348,6 +373,7 @@ namespace config {
 		persist.add_options()
 			("persist.profiles", value<bool>()->default_value(true),       "Persist peer profiles (default: true)")
 			("persist.addressbook", value<bool>()->default_value(true),    "Persist full addresses (default: true)")
+			("persist.netdbinterval", value<int>()->default_value(60),     "NetDb persist interval in seconds (default: 60)")
 		;
 
 		options_description cpuext("CPU encryption extensions options. Deprecated");
@@ -368,6 +394,16 @@ namespace config {
 		unix_specific.add_options()
 			("unix.handle_sigtstp", bool_switch()->default_value(false),             "Handle SIGTSTP and SIGCONT signals (default: disabled)")
 		;
+#endif
+
+#ifdef __OpenBSD__
+		options_description openbsd_specific("OpenBSD specific options");
+		openbsd_specific.add_options()
+			("openbsd.pledge_file", value<std::string>()->default_value(""), "OpenbSD file with pledge rules")
+			("openbsd.unevil_file", value<std::string>()->default_value(""), "OpenBSD file with unevil rules")
+			("openbsd.unevil_enabled", value<bool>()->default_value(true),     "use unevil rues")
+			("openbsd.pledge_enabled", value<bool>()->default_value(true),     "use pledge rules")
+			;
 #endif
 
 		m_OptionsDesc
@@ -396,6 +432,9 @@ namespace config {
 			.add(meshnets)
 #ifdef __linux__
 			.add(unix_specific)
+#endif
+#ifdef __OpenBSD__
+			.add(openbsd_specific)
 #endif
 		;
 	}

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -28,7 +28,7 @@ namespace garlic
 {
 	GarlicRoutingSession::GarlicRoutingSession (GarlicDestination * owner, bool attachLeaseSet):
 		m_Owner (owner), m_LeaseSetUpdateStatus (attachLeaseSet ? eLeaseSetUpdated : eLeaseSetDoNotSend),
-		m_LeaseSetUpdateMsgID (0), m_IsWithJava (false), m_NumSentPackets (0)
+		m_LeaseSetUpdateMsgID (0), m_IsWithJava (false), m_NumSentPackets (0), m_LastSendTime (0)
 	{
 	}
 
@@ -97,6 +97,14 @@ namespace garlic
 			msg = garlic.WrapSingleMessage (msg);
 		}
 		return msg;
+	}
+
+	std::vector<std::shared_ptr<I2NPMessage> > GarlicRoutingSession::WrapMultipleMessages (const std::vector<std::shared_ptr<const I2NPMessage> >& msgs)
+	{
+		std::vector<std::shared_ptr<I2NPMessage> > ret;
+		for (auto& msg: msgs)
+			ret.push_back (WrapSingleMessage(msg));
+		return ret;
 	}
 
 	ElGamalAESSession::ElGamalAESSession (GarlicDestination * owner,
@@ -425,8 +433,10 @@ namespace garlic
 		return ret;
 	}
 
-	GarlicDestination::GarlicDestination (): m_NumTags (32), // 32 tags by default
-		m_PayloadBuffer (nullptr), m_LastIncomingSessionTimestamp (0), 
+	GarlicDestination::GarlicDestination ():
+		m_Rng(i2p::util::GetMonotonicMicroseconds () % 1000000LL),
+		m_IsIdling (false), m_NumTags (32), // 32 tags by default
+		m_PayloadBuffer (nullptr), m_LastIncomingSessionTimestamp (0),
 		m_NumRatchetInboundTags (0) // 0 means standard
 	{
 	}
@@ -497,11 +507,8 @@ namespace garlic
 		auto mod = length & 0x0f; // %16
 		buf += 4; // length
 
-		bool found = false;
-		bool supportsRatchets = SupportsRatchets ();
-		if (supportsRatchets)
-			// try ECIESx25519 tag
-			found = HandleECIESx25519TagMessage (buf, length);
+		// try ECIESx25519 tag, might be used even is ratchets not supported
+		bool found = HandleECIESx25519TagMessage (buf, length);
 		if (!found)
 		{
 			auto it = !mod ? m_Tags.find (SessionTag(buf)) : m_Tags.end (); // AES block is multiple of 16
@@ -536,12 +543,12 @@ namespace garlic
 					decryption->Decrypt(buf + 514, length - 514, iv, buf + 514);
 					HandleAESBlock (buf + 514, length - 514, decryption, msg->from);
 				}
-				else if (supportsRatchets)
+				else if (SupportsRatchets ())
 				{
 					// otherwise ECIESx25519
 					auto ts = i2p::util::GetMillisecondsSinceEpoch ();
-					if (ts > m_LastIncomingSessionTimestamp + INCOMING_SESSIONS_MINIMAL_INTERVAL) 
-					{	
+					if (ts > m_LastIncomingSessionTimestamp + INCOMING_SESSIONS_MINIMAL_INTERVAL)
+					{
 						auto session = std::make_shared<ECIESX25519AEADRatchetSession> (this, false); // incoming
 						if (session->HandleNextMessage (buf, length, nullptr, 0))
 							m_LastIncomingSessionTimestamp = ts;
@@ -751,7 +758,7 @@ namespace garlic
 		if (destination->GetEncryptionType () >= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
 		{
 			if (SupportsEncryptionType (destination->GetEncryptionType ()))
-			{	
+			{
 				ECIESX25519AEADRatchetSessionPtr session;
 				uint8_t staticKey[32];
 				destination->Encrypt (nullptr, staticKey); // we are supposed to get static key
@@ -1021,7 +1028,7 @@ namespace garlic
 			{
 				LogPrint (eLogDebug, "Garlic: Type local");
 				I2NPMessageType typeID = (I2NPMessageType)(buf[0]); buf++; // typeid
-				int32_t msgID = bufbe32toh (buf); buf += 4; // msgID
+				uint32_t msgID = bufbe32toh (buf); buf += 4; // msgID
 				buf += 4; // expiration
 				ptrdiff_t offset = buf - buf1;
 				if (offset <= (int)len)
@@ -1115,11 +1122,11 @@ namespace garlic
 	{
 		return m_Encryptor.Encrypt (msg, msgLen, ad, adLen, key, nonce, buf, len);
 	}
-		
+
 	bool GarlicDestination::AEADChaCha20Poly1305Decrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len)
 	{
 		return m_Decryptor.Decrypt (msg, msgLen, ad, adLen, key, nonce, buf, len);
-	}	
+	}
 }
 }

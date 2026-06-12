@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -281,7 +281,7 @@ namespace data
 			LogPrint (eLogError, "LeaseSet2: Actual buffer size ", int(len) , " exceeds full buffer size ", int(m_BufferLen));
 	}
 
-	LeaseSet2::LeaseSet2 (uint8_t storeType, const uint8_t * buf, size_t len, 
+	LeaseSet2::LeaseSet2 (uint8_t storeType, const uint8_t * buf, size_t len,
 	    bool storeLeases, std::shared_ptr<LocalDestination> dest, CryptoKeyType preferredCrypto):
 		LeaseSet (storeLeases), m_StoreType (storeType), m_EncryptionType (preferredCrypto)
 	{
@@ -321,6 +321,7 @@ namespace data
 		if (readIdentity || !GetIdentity ())
 		{
 			identity = netdb.NewIdentity (buf, len);
+			if (!identity || !identity->GetFullLen ()) return;
 			SetIdentity (identity);
 		}
 		else
@@ -349,6 +350,7 @@ namespace data
 		}
 		// type specific part
 		size_t s = 0;
+		if (offset > len) return;
 		switch (m_StoreType)
 		{
 			case NETDB_STORE_TYPE_STANDARD_LEASESET2:
@@ -399,8 +401,12 @@ namespace data
 	{
 		size_t offset = 0;
 		// properties
-		uint16_t propertiesLen = bufbe16toh (buf + offset); offset += 2;
-		offset += propertiesLen; // skip for now. TODO: implement properties
+		if (offset + 2 > len) return 0;
+		m_Properties.CleanUp ();
+		uint16_t propertiesLen = bufbe16toh (buf + offset);
+		if (propertiesLen)
+			m_Properties.FromBuffer (buf + offset, len - offset);
+		offset += propertiesLen + 2;
 		// key sections
 		CryptoKeyType preferredKeyType = m_EncryptionType;
 		m_EncryptionType = 0;
@@ -418,8 +424,8 @@ namespace data
 				// we pick max key type if preferred not found
 #if !OPENSSL_PQ
 				if (keyType <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD) // skip PQ keys if not supported
-#endif			
-				{	
+#endif
+				{
 					if ((keyType == preferredKeyType || !m_Encryptor || keyType > m_EncryptionType) &&
 					    (!dest || dest->SupportsEncryptionType (keyType)))
 					{
@@ -429,9 +435,9 @@ namespace data
 							m_Encryptor = encryptor; // TODO: atomic
 							m_EncryptionType = keyType;
 							if (keyType == preferredKeyType) preferredKeyFound = true;
-						}	
+						}
 					}
-				}	
+				}
 			}
 			offset += encryptionKeyLen;
 		}
@@ -443,12 +449,12 @@ namespace data
 		{
 			LogPrint (eLogWarning, "LeaseSet2: Expiration time is from future ", GetExpirationTime ()/1000LL);
 			return 0;
-		}	
+		}
 		if (ts > m_PublishedTimestamp*1000LL + LEASESET_EXPIRATION_TIME_THRESHOLD)
 		{
 			LogPrint (eLogWarning, "LeaseSet2: Published time is too old ", m_PublishedTimestamp);
 			return 0;
-		}	
+		}
 		if (IsStoreLeases ())
 		{
 			UpdateLeasesBegin ();
@@ -463,7 +469,7 @@ namespace data
 				{
 					LogPrint (eLogWarning, "LeaseSet2: Lease end date is from future ", lease.endDate);
 					return 0;
-				}	
+				}
 				UpdateLease (lease, ts);
 			}
 			UpdateLeasesEnd ();
@@ -502,7 +508,7 @@ namespace data
 		return offset;
 	}
 
-	void LeaseSet2::ReadFromBufferEncrypted (const uint8_t * buf, size_t len, 
+	void LeaseSet2::ReadFromBufferEncrypted (const uint8_t * buf, size_t len,
 		std::shared_ptr<const BlindedPublicKey> key, std::shared_ptr<LocalDestination> dest, const uint8_t * secret)
 	{
 		size_t offset = 0;
@@ -758,7 +764,7 @@ namespace data
 		memset (m_Buffer + offset, 0, signingKeyLen);
 		offset += signingKeyLen;
 		// num leases
-		auto numLeasesPos = offset;	
+		auto numLeasesPos = offset;
 		m_Buffer[offset] = num;
 		offset++;
 		// leases
@@ -774,7 +780,7 @@ namespace data
 				// already expired, skip
 				skipped++;
 				continue;
-			}	
+			}
 			if (ts > m_ExpirationTime) m_ExpirationTime = ts;
 			// make sure leaseset is newer than previous, but adding some time to expiration date
 			ts += (currentTime - tunnels[i]->GetCreationTime ()*1000LL)*2/i2p::tunnel::TUNNEL_EXPIRATION_TIMEOUT; // up to 2 secs
@@ -792,7 +798,7 @@ namespace data
 			num -= skipped;
 			m_BufferLen -= skipped*LEASE_SIZE;
 			m_Buffer[numLeasesPos] = num;
-		}	
+		}
 		// we don't sign it yet. must be signed later on
 	}
 
@@ -909,12 +915,12 @@ namespace data
 		for (int i = 0; i < num; i++)
 		{
 			auto ts = tunnels[i]->GetCreationTime () + i2p::tunnel::TUNNEL_EXPIRATION_TIMEOUT - i2p::tunnel::TUNNEL_EXPIRATION_THRESHOLD; // in seconds, 1 minute before expiration
-			if (ts <= publishedTimestamp) 
-			{	
+			if (ts <= publishedTimestamp)
+			{
 				// already expired, skip
 				skipped++;
-				continue; 
-			}	
+				continue;
+			}
 			if (ts > expirationTime) expirationTime = ts;
 			memcpy (m_Buffer + offset, tunnels[i]->GetNextIdentHash (), 32);
 			offset += 32; // gateway id
@@ -930,7 +936,7 @@ namespace data
 			num -= skipped;
 			m_BufferLen -= skipped*LEASE2_SIZE;
 			m_Buffer[numLeasesPos] = num;
-		}	
+		}
 		// update expiration
 		if (expirationTime)
 		{

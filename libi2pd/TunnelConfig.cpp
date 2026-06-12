@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -15,6 +15,7 @@
 #include "Timestamp.h"
 #include "I2PEndian.h"
 #include "I2NPProtocol.h"
+#include "util.h"
 #include "TunnelConfig.h"
 
 namespace i2p
@@ -82,7 +83,7 @@ namespace tunnel
 		decryption.Decrypt(record, TUNNEL_BUILD_RECORD_SIZE, replyIV, record);
 	}
 
-	void ECIESTunnelHopConfig::EncryptECIES (const uint8_t * plainText, size_t len, uint8_t * encrypted)
+	void ShortECIESTunnelHopConfig::EncryptECIES (const uint8_t * plainText, uint8_t * encrypted)
 	{
 		if (!ident) return;
 		i2p::crypto::InitNoiseNState (*this, ident->GetEncryptionPublicKey ());
@@ -95,61 +96,12 @@ namespace tunnel
 		MixKey (sharedSecret);
 		uint8_t nonce[12];
 		memset (nonce, 0, 12);
-		if (!i2p::crypto::AEADChaCha20Poly1305 (plainText, len, m_H, 32, m_CK + 32, nonce, encrypted, len + 16, true)) // encrypt
+		if (!Encrypt (plainText, encrypted, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE))
 		{
 			LogPrint (eLogWarning, "Tunnel: Plaintext AEAD encryption failed");
 			return;
 		}
-		MixHash (encrypted, len + 16); // h = SHA256(h || ciphertext)
-	}
-
-	bool ECIESTunnelHopConfig::DecryptECIES (const uint8_t * key, const uint8_t * nonce, const uint8_t * encrypted, size_t len, uint8_t * clearText) const
-	{
-		return i2p::crypto::AEADChaCha20Poly1305 (encrypted, len - 16, m_H, 32, key, nonce, clearText, len - 16, false); // decrypt
-	}
-
-	void LongECIESTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID)
-	{
-		// generate keys
-		RAND_bytes (layerKey, 32);
-		RAND_bytes (ivKey, 32);
-		RAND_bytes (replyKey, 32);
-		RAND_bytes (replyIV, 16);
-		// fill clear text
-		uint8_t flag = 0;
-		if (isGateway) flag |= TUNNEL_BUILD_RECORD_GATEWAY_FLAG;
-		if (isEndpoint) flag |= TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
-		uint8_t clearText[ECIES_BUILD_REQUEST_RECORD_CLEAR_TEXT_SIZE];
-		htobe32buf (clearText + ECIES_BUILD_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET, tunnelID);
-		htobe32buf (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_TUNNEL_OFFSET, nextTunnelID);
-		memcpy (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET, nextIdent, 32);
-		memcpy (clearText + ECIES_BUILD_REQUEST_RECORD_LAYER_KEY_OFFSET, layerKey, 32);
-		memcpy (clearText + ECIES_BUILD_REQUEST_RECORD_IV_KEY_OFFSET, ivKey, 32);
-		memcpy (clearText + ECIES_BUILD_REQUEST_RECORD_REPLY_KEY_OFFSET, replyKey, 32);
-		memcpy (clearText + ECIES_BUILD_REQUEST_RECORD_REPLY_IV_OFFSET, replyIV, 16);
-		clearText[ECIES_BUILD_REQUEST_RECORD_FLAG_OFFSET] = flag;
-		memset (clearText + ECIES_BUILD_REQUEST_RECORD_MORE_FLAGS_OFFSET, 0, 3); // set to 0 for compatibility
-		htobe32buf (clearText + ECIES_BUILD_REQUEST_RECORD_REQUEST_TIME_OFFSET, i2p::util::GetMinutesSinceEpoch ());
-		htobe32buf (clearText + ECIES_BUILD_REQUEST_RECORD_REQUEST_EXPIRATION_OFFSET, 600); // +10 minutes
-		htobe32buf (clearText + ECIES_BUILD_REQUEST_RECORD_SEND_MSG_ID_OFFSET, replyMsgID);
-		memset (clearText + ECIES_BUILD_REQUEST_RECORD_PADDING_OFFSET, 0, ECIES_BUILD_REQUEST_RECORD_CLEAR_TEXT_SIZE - ECIES_BUILD_REQUEST_RECORD_PADDING_OFFSET);
-		// encrypt
-		uint8_t * record = records + recordIndex*TUNNEL_BUILD_RECORD_SIZE;
-		EncryptECIES (clearText, ECIES_BUILD_REQUEST_RECORD_CLEAR_TEXT_SIZE, record + BUILD_REQUEST_RECORD_ENCRYPTED_OFFSET);
-		memcpy (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)ident->GetIdentHash (), 16);
-	}
-
-	bool LongECIESTunnelHopConfig::DecryptBuildResponseRecord (uint8_t * records) const
-	{
-		uint8_t * record = records + recordIndex*TUNNEL_BUILD_RECORD_SIZE;
-		uint8_t nonce[12];
-		memset (nonce, 0, 12);
-		if (!DecryptECIES (m_CK, nonce, record, TUNNEL_BUILD_RECORD_SIZE, record))
-		{
-			LogPrint (eLogWarning, "Tunnel: Response AEAD decryption failed");
-			return false;
-		}
-		return true;
+		MixHash (encrypted, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE + 16); // h = SHA256(h || ciphertext)
 	}
 
 	void ShortECIESTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID)
@@ -168,10 +120,15 @@ namespace tunnel
 		htobe32buf (clearText + SHORT_REQUEST_RECORD_REQUEST_TIME_OFFSET, i2p::util::GetMinutesSinceEpoch ());
 		htobe32buf (clearText + SHORT_REQUEST_RECORD_REQUEST_EXPIRATION_OFFSET , 600); // +10 minutes
 		htobe32buf (clearText + SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET, replyMsgID);
-		memset (clearText + SHORT_REQUEST_RECORD_PADDING_OFFSET, 0, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE - SHORT_REQUEST_RECORD_PADDING_OFFSET);
+		i2p::util::Mapping options;
+		auto optionsSize = options.ToBuffer (clearText + SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET,
+			SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE - SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET);
+		if (SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET + optionsSize < SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE)
+			memset (clearText + SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET + optionsSize, 0,
+				SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE - SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET - optionsSize);
 		// encrypt
 		uint8_t * record = records + recordIndex*SHORT_TUNNEL_BUILD_RECORD_SIZE;
-		EncryptECIES (clearText, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE, record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET);
+		EncryptECIES (clearText, record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET);
 		// derive keys
 		i2p::crypto::HKDF (m_CK, nullptr, 0, "SMTunnelReplyKey", m_CK);
 		memcpy (replyKey, m_CK + 32, 32);
@@ -194,7 +151,8 @@ namespace tunnel
 		uint8_t nonce[12];
 		memset (nonce, 0, 12);
 		nonce[4] = recordIndex; // nonce is record index
-		if (!DecryptECIES (replyKey, nonce, record, SHORT_TUNNEL_BUILD_RECORD_SIZE, record))
+		if (!i2p::crypto::AEADChaCha20Poly1305 (record, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16,
+			m_H, 32, replyKey, nonce, record, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16, false)) // decrypt
 		{
 			LogPrint (eLogWarning, "Tunnel: Response AEAD decryption failed");
 			return false;
@@ -219,14 +177,6 @@ namespace tunnel
 		return tag;
 	}
 
-	void LongPhonyTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID)
-	{
-		uint8_t * record = records + recordIndex*TUNNEL_BUILD_RECORD_SIZE;
-		memcpy (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)i2p::context.GetIdentHash (), 16);
-		memcpy (record + BUILD_REQUEST_RECORD_ENCRYPTED_OFFSET, i2p::transport::transports.GetNextX25519KeysPair ()->GetPublicKey (), 32);
-		RAND_bytes (record + 48, TUNNEL_BUILD_RECORD_SIZE - 48);
-	}
-
 	void ShortPhonyTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID)
 	{
 		uint8_t * record = records + recordIndex*SHORT_TUNNEL_BUILD_RECORD_SIZE;
@@ -236,8 +186,8 @@ namespace tunnel
 	}
 
 	TunnelConfig::TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers,
-		bool isShort, i2p::data::RouterInfo::CompatibleTransports farEndTransports):
-		m_IsShort (isShort), m_FarEndTransports (farEndTransports)
+		i2p::data::RouterInfo::CompatibleTransports farEndTransports):
+		m_FarEndTransports (farEndTransports)
 	{
 		// inbound
 		CreatePeers (peers);
@@ -245,39 +195,27 @@ namespace tunnel
 	}
 
 	TunnelConfig::TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers,
-		uint32_t replyTunnelID, const i2p::data::IdentHash& replyIdent, bool isShort,
+		uint32_t replyTunnelID, const i2p::data::IdentHash& replyIdent,
 		i2p::data::RouterInfo::CompatibleTransports farEndTransports):
-		m_IsShort (isShort), m_FarEndTransports (farEndTransports)
+		m_FarEndTransports (farEndTransports)
 	{
 		// outbound
 		CreatePeers (peers);
 		m_FirstHop->isGateway = false;
 		m_LastHop->SetReplyHop (replyTunnelID, replyIdent);
 	}
-	
+
 	void TunnelConfig::CreatePeers (const std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers)
 	{
 		TunnelHopConfig * prev = nullptr;
 		for (const auto& it: peers)
 		{
-			TunnelHopConfig * hop = nullptr;
-			if (m_IsShort)
-				hop = new ShortECIESTunnelHopConfig (it);
+			TunnelHopConfig * hop = new ShortECIESTunnelHopConfig (it);
+			if (prev)
+				prev->SetNext (hop);
 			else
-			{
-				if (it->GetCryptoKeyType () == i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
-					hop = new LongECIESTunnelHopConfig (it);
-				else
-					LogPrint (eLogError, "Tunnel: ElGamal router is not supported");
-			}
-			if (hop)
-			{
-				if (prev)
-					prev->SetNext (hop);
-				else
-					m_FirstHop = hop;
-				prev = hop;
-			}
+				m_FirstHop = hop;
+			prev = hop;
 		}
 		m_LastHop = prev;
 	}
@@ -285,20 +223,13 @@ namespace tunnel
 	void TunnelConfig::CreatePhonyHop ()
 	{
 		if (m_LastHop && m_LastHop->ident)
-		{	
-			TunnelHopConfig * hop = nullptr;
-			if (m_IsShort)
-				hop = new ShortPhonyTunnelHopConfig ();
-			else
-				hop = new LongPhonyTunnelHopConfig ();
-			if (hop)
-			{	
-				hop->prev = m_LastHop;
-				m_LastHop->next = hop;
-				m_LastHop = hop;
-			}	
-		}	
-	}	
+		{
+			TunnelHopConfig * hop = new ShortPhonyTunnelHopConfig ();
+			hop->prev = m_LastHop;
+			m_LastHop->next = hop;
+			m_LastHop = hop;
+		}
+	}
 
 	void TunnelConfig::DeletePhonyHop ()
 	{
@@ -309,7 +240,7 @@ namespace tunnel
 			auto tmp = m_LastHop;
 			m_LastHop = m_LastHop->prev;
 			delete tmp;
-		}	
-	}	
+		}
+	}
 }
 }

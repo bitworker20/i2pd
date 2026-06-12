@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, The PurpleI2P Project
+* Copyright (c) 2022-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -64,6 +64,7 @@ namespace german // language namespace
 		{"Clock skew", "Zeitabweichung"},
 		{"Offline", "Offline"},
 		{"Symmetric NAT", "Symmetrisches NAT"},
+		{"Full cone NAT", "Vollständige NAT"},
 		{"No Descriptors", "Keine Beschreibungen"},
 		{"Uptime", "Laufzeit"},
 		{"Network status", "Netzwerkstatus"},

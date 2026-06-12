@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -33,7 +33,7 @@ namespace data
 	const char PEER_PROFILE_USAGE_REJECTED[] = "rejected";
 	const char PEER_PROFILE_USAGE_CONNECTED[] = "connected";
 	const char PEER_PROFILE_USAGE_DUPLICATED[] = "duplicated";
-	
+
 	const int PEER_PROFILE_EXPIRATION_TIMEOUT = 36*60*60; // in seconds (1.5 days)
 	const int PEER_PROFILE_AUTOCLEAN_TIMEOUT = 1500; // in seconds (25 minutes)
 	const int PEER_PROFILE_AUTOCLEAN_VARIANCE = 900; // in seconds (15 minutes)
@@ -45,9 +45,9 @@ namespace data
 	const int PEER_PROFILE_UNREACHABLE_INTERVAL = 480; // in seconds (8 minutes)
 	const int PEER_PROFILE_USEFUL_THRESHOLD = 3;
 	const int PEER_PROFILE_ALWAYS_DECLINING_NUM = 5; // num declines in row to consider always declined
-	const int PEER_PROFILE_APPLY_POSTPONED_TIMEOUT = 2100; // in milliseconds	
-	const int PEER_PROFILE_APPLY_POSTPONED_TIMEOUT_VARIANCE = 500; // in milliseconds	
-	
+	const int PEER_PROFILE_APPLY_POSTPONED_TIMEOUT = 2100; // in milliseconds
+	const int PEER_PROFILE_APPLY_POSTPONED_TIMEOUT_VARIANCE = 500; // in milliseconds
+
 	class RouterProfile
 	{
 		public:
@@ -59,10 +59,10 @@ namespace data
 
 			bool IsBad ();
 			bool IsUnreachable ();
-			bool IsReal () const { return m_HasConnected || m_NumTunnelsAgreed > 0 || m_NumTunnelsDeclined > 0; } 
+			bool IsReal () const { return m_HasConnected || m_NumTunnelsAgreed > 0 || m_NumTunnelsDeclined > 0; }
 
 			void TunnelBuildResponse (uint8_t ret);
-			void TunnelNonReplied ();
+			void TunnelNonReplied (int tunnelLength);
 
 			void Unreachable (bool unreachable);
 			void Connected ();
@@ -75,15 +75,15 @@ namespace data
 			void SetLastAccessTime (uint64_t ts) { m_LastAccessTime = ts; };
 			uint64_t GetLastPersistTime () const { return m_LastPersistTime; };
 			void SetLastPersistTime (uint64_t ts) { m_LastPersistTime = ts; };
-			
+
 			bool IsUseful() const;
 			bool IsDuplicated () const { return m_IsDuplicated; };
 
 			const boost::asio::ip::udp::endpoint& GetLastEndpoint () const { return m_LastEndpoint; }
 			void SetLastEndpoint (const boost::asio::ip::udp::endpoint& ep) { m_LastEndpoint = ep; }
-			bool HasLastEndpoint (bool v4) const { return !m_LastEndpoint.address ().is_unspecified () && m_LastEndpoint.port () && 
+			bool HasLastEndpoint (bool v4) const { return !m_LastEndpoint.address ().is_unspecified () && m_LastEndpoint.port () &&
 				((v4 && m_LastEndpoint.address ().is_v4 ()) || (!v4 && m_LastEndpoint.address ().is_v6 ())); }
-			
+
 		private:
 
 			void UpdateTime ();
@@ -96,16 +96,16 @@ namespace data
 		private:
 
 			bool m_IsUpdated;
-			uint64_t m_LastDeclineTime, m_LastUnreachableTime, m_LastUpdateTime, 
+			uint64_t m_LastDeclineTime, m_LastUnreachableTime, m_LastUpdateTime,
 				m_LastAccessTime, m_LastPersistTime; // in seconds
 			// participation
 			uint32_t m_NumTunnelsAgreed;
 			uint32_t m_NumTunnelsDeclined;
-			uint32_t m_NumTunnelsNonReplied;
+			float m_NumTunnelsNonReplied; // per one hop tunnel, 2 hops tunnel adds 0.5
 			// usage
 			uint32_t m_NumTimesTaken;
 			uint32_t m_NumTimesRejected;
-			bool m_HasConnected; // successful trusted(incoming or NTCP2) connection 
+			bool m_HasConnected; // successful trusted(incoming or NTCP2) connection
 			bool m_IsDuplicated;
 			// connectivity
 			boost::asio::ip::udp::endpoint m_LastEndpoint; // SSU2 for non-published addresses

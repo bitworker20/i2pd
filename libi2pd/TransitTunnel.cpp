@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -46,7 +46,7 @@ namespace tunnel
 	std::string TransitTunnel::GetNextPeerName () const
 	{
 		return i2p::data::GetIdentHashAbbreviation (GetNextIdentHash ());
-	}	
+	}
 
 	void TransitTunnel::SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg)
 	{
@@ -57,7 +57,7 @@ namespace tunnel
 	{
 		LogPrint (eLogError, "TransitTunnel: Incoming tunnel message is not supported ", GetTunnelID ());
 	}
-		
+
 	TransitTunnelParticipant::~TransitTunnelParticipant ()
 	{
 	}
@@ -92,12 +92,12 @@ namespace tunnel
 		{
 			auto transport = m_Sender->GetCurrentTransport ();
 			if (transport)
-				return TransitTunnel::GetNextPeerName () + "-" + 
+				return TransitTunnel::GetNextPeerName () + "-" +
 					i2p::data::RouterInfo::GetTransportName (transport->GetTransportType ());
-		}	
+		}
 		return TransitTunnel::GetNextPeerName ();
-	}	
-		
+	}
+
 	void TransitTunnelGateway::SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg)
 	{
 		TunnelMessageBlock block;
@@ -120,12 +120,12 @@ namespace tunnel
 		{
 			auto transport = sender->GetCurrentTransport ();
 			if (transport)
-				return TransitTunnel::GetNextPeerName () + "-" + 
+				return TransitTunnel::GetNextPeerName () + "-" +
 					i2p::data::RouterInfo::GetTransportName (transport->GetTransportType ());
-		}	
+		}
 		return TransitTunnel::GetNextPeerName ();
-	}	
-		
+	}
+
 	void TransitTunnelEndpoint::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage>&& tunnelMsg)
 	{
 		auto newMsg = CreateEmptyTunnelDataMsg (true);
@@ -143,38 +143,38 @@ namespace tunnel
 		{
 			std::lock_guard<std::mutex> l(m_HandleMutex);
 			m_Endpoint->FlushI2NPMsgs ();
-		}	
-	}	
+		}
+	}
 
 	void TransitTunnelEndpoint::Cleanup ()
-	{ 
+	{
 		if (m_Endpoint)
-		{	
+		{
 			std::lock_guard<std::mutex> l(m_HandleMutex);
 			m_Endpoint->Cleanup ();
-		}	
-	}	
-		
+		}
+	}
+
 	std::string TransitTunnelEndpoint::GetNextPeerName () const
-	{ 
+	{
 		if (!m_Endpoint) return "";
 		auto hash = m_Endpoint->GetCurrentHash ();
 		if (hash)
-		{	
+		{
 			const auto& sender = m_Endpoint->GetSender ();
 			if (sender)
 			{
 				auto transport = sender->GetCurrentTransport ();
 				if (transport)
-					return i2p::data::GetIdentHashAbbreviation (*hash) + "-" + 
+					return i2p::data::GetIdentHashAbbreviation (*hash) + "-" +
 						i2p::data::RouterInfo::GetTransportName (transport->GetTransportType ());
 				else
 					return i2p::data::GetIdentHashAbbreviation (*hash);
-			}	
+			}
 		}
 		return "";
-	}	
-		
+	}
+
 	std::shared_ptr<TransitTunnel> CreateTransitTunnel (uint32_t receiveTunnelID,
 		const i2p::data::IdentHash& nextIdent, uint32_t nextTunnelID,
 		const i2p::crypto::AESKey& layerKey, const i2p::crypto::AESKey& ivKey,
@@ -201,18 +201,18 @@ namespace tunnel
 		m_IsRunning (false), m_Rng(i2p::util::GetMonotonicMicroseconds ()%1000000LL)
 	{
 	}
-		
+
 	TransitTunnels::~TransitTunnels ()
 	{
 		Stop ();
-	}	
-		
-	void TransitTunnels::Start () 
+	}
+
+	void TransitTunnels::Start ()
 	{
 		m_IsRunning = true;
 		m_Thread.reset (new std::thread (std::bind (&TransitTunnels::Run, this)));
 	}
-		
+
 	void TransitTunnels::Stop ()
 	{
 		m_IsRunning = false;
@@ -223,9 +223,9 @@ namespace tunnel
 			m_Thread = nullptr;
 		}
 		m_TransitTunnels.clear ();
-	}	
+	}
 
-	void TransitTunnels::Run () 
+	void TransitTunnels::Run ()
 	{
 		i2p::util::SetThreadName("TBM");
 		uint64_t lastTs = 0;
@@ -246,16 +246,16 @@ namespace tunnel
 						{
 							case eI2NPShortTunnelBuild:
 								HandleShortTransitTunnelBuildMsg (std::move (msg));
-							break;	
+							break;
 							case eI2NPVariableTunnelBuild:
 								HandleVariableTransitTunnelBuildMsg (std::move (msg));
-							break;	
+							break;
 							default:
 								LogPrint (eLogWarning, "TransitTunnel: Unexpected message type ", (int) typeID);
 						}
 						if (!m_IsRunning) break;
-					}	
-				}	
+					}
+				}
 				if (m_IsRunning)
 				{
 					uint64_t ts = i2p::util::GetSecondsSinceEpoch ();
@@ -264,7 +264,7 @@ namespace tunnel
 						ManageTransitTunnels (ts);
 						lastTs = ts;
 					}
-				}	
+				}
 			}
 			catch (std::exception& ex)
 			{
@@ -275,9 +275,15 @@ namespace tunnel
 
 	void TransitTunnels::PostTransitTunnelBuildMsg  (std::shared_ptr<I2NPMessage>&& msg)
 	{
-		if (msg) m_TunnelBuildMsgQueue.Put (msg);
-	}	
-		
+		if (msg)
+		{
+			if (m_TunnelBuildMsgQueue.GetSize () < TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE)
+				m_TunnelBuildMsgQueue.Put (msg);
+			else
+				m_TunnelBuildMsgQueue.WakeUp (); // tell TBM thread to process queue
+		}
+	}
+
 	void TransitTunnels::HandleShortTransitTunnelBuildMsg (std::shared_ptr<I2NPMessage>&& msg)
 	{
 		if (!msg) return;
@@ -326,43 +332,43 @@ namespace tunnel
 					memcpy (ivKey, noiseState.m_CK + 32, 32);
 				}
 				else
-				{	
+				{
 					if (!memcmp ((const uint8_t *)i2p::context.GetIdentHash (), clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET, 32)) // if next ident is now ours
 					{
 						LogPrint (eLogWarning, "TransitTunnel: Next ident is ours in short request record");
 						return;
-					}	
+					}
 					memcpy (ivKey, noiseState.m_CK , 32);
-				}	
+				}
 
 				// check if we accept this tunnel
 				std::shared_ptr<i2p::tunnel::TransitTunnel> transitTunnel;
 				uint8_t retCode = 0;
-				if (i2p::context.AcceptsTunnels ())
+				if (i2p::context.AcceptsTunnels () && !i2p::context.IsLimitedConnectivity ())
 				{
 					auto congestionLevel = i2p::context.GetCongestionLevel (false);
 					if (congestionLevel < CONGESTION_LEVEL_FULL)
-					{	
+					{
 						if (congestionLevel >= CONGESTION_LEVEL_MEDIUM)
-						{	
+						{
 							// random reject depending on congestion level
 							int level = m_Rng () % (CONGESTION_LEVEL_FULL - CONGESTION_LEVEL_MEDIUM) + CONGESTION_LEVEL_MEDIUM;
 							if (congestionLevel > level)
 								retCode = 30;
-						}	
-					}	
+						}
+					}
 					else
 						retCode = 30;
-				}	
-				else	
+				}
+				else
 					retCode = 30;
-				
+
 				if (!retCode)
 				{
 					i2p::data::IdentHash nextIdent(clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET);
 					bool isEndpoint = clearText[SHORT_REQUEST_RECORD_FLAG_OFFSET] & TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
 					if (isEndpoint || !i2p::data::IsRouterDuplicated (nextIdent))
-					{	
+					{
 						// create new transit tunnel
 						transitTunnel = CreateTransitTunnel (
 							bufbe32toh (clearText + SHORT_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET),
@@ -375,7 +381,7 @@ namespace tunnel
 							retCode = 30;
 					}
 					else
-						// decline tunnel going to duplicated router 
+						// decline tunnel going to duplicated router
 						retCode = 30;
 				}
 
@@ -388,7 +394,12 @@ namespace tunnel
 					nonce[4] = j; // nonce is record #
 					if (j == i)
 					{
-						memset (reply + SHORT_RESPONSE_RECORD_OPTIONS_OFFSET, 0, 2); // no options
+						i2p::util::Mapping replyOptions;
+						size_t optionsSize = replyOptions.ToBuffer (reply + SHORT_RESPONSE_RECORD_OPTIONS_OFFSET,
+							SHORT_RESPONSE_RECORD_RET_OFFSET - SHORT_RESPONSE_RECORD_OPTIONS_OFFSET);
+						if (SHORT_RESPONSE_RECORD_OPTIONS_OFFSET + optionsSize < SHORT_RESPONSE_RECORD_RET_OFFSET)
+							memset (reply + SHORT_RESPONSE_RECORD_OPTIONS_OFFSET + optionsSize, 0,
+								SHORT_RESPONSE_RECORD_RET_OFFSET - SHORT_RESPONSE_RECORD_OPTIONS_OFFSET - optionsSize);
 						reply[SHORT_RESPONSE_RECORD_RET_OFFSET] = retCode;
 						if (!i2p::crypto::AEADChaCha20Poly1305 (reply, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16,
 							noiseState.m_H, 32, replyKey, nonce, reply, SHORT_TUNNEL_BUILD_RECORD_SIZE, true)) // encrypt
@@ -409,9 +420,9 @@ namespace tunnel
 							LogPrint (eLogDebug, "TransitTunnel: Failed to send reply for transit tunnel ", transitTunnel->GetTunnelID ());
 							auto t = transitTunnel->GetCreationTime ();
 							if (t > i2p::tunnel::TUNNEL_EXPIRATION_TIMEOUT)
-								// make transit tunnel expired 
+								// make transit tunnel expired
 								transitTunnel->SetCreationTime (t - i2p::tunnel::TUNNEL_EXPIRATION_TIMEOUT);
-						}	
+						}
 					};
 				if (isEndpoint)
 				{
@@ -436,10 +447,10 @@ namespace tunnel
 						uint32_t tunnelID = bufbe32toh (clearText + SHORT_REQUEST_RECORD_NEXT_TUNNEL_OFFSET);
 						auto tunnel = i2p::tunnel::tunnels.GetTunnel (tunnelID);
 						if (tunnel)
-						{	
+						{
 							tunnel->SendTunnelDataMsg (replyMsg);
 							tunnel->FlushTunnelDataMsgs ();
-						}	
+						}
 						else
 							LogPrint (eLogWarning, "I2NP: Tunnel ", tunnelID, " not found for short tunnel build reply");
 					}
@@ -450,13 +461,13 @@ namespace tunnel
 							bufbe32toh (clearText + SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET));
 					if (transitTunnel) msg->onDrop = onDrop;
 					i2p::transport::transports.SendMessage (clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET, msg);
-				}	
+				}
 				return;
 			}
 			record += SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		}
-	}	
-		
+	}
+
 	bool TransitTunnels::HandleBuildRequestRecords (int num, uint8_t * records, uint8_t * clearText)
 	{
 		for (int i = 0; i < num; i++)
@@ -465,43 +476,43 @@ namespace tunnel
 			if (!memcmp (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)i2p::context.GetRouterInfo ().GetIdentHash (), 16))
 			{
 				LogPrint (eLogDebug, "TransitTunnel: Build request record ", i, " is ours");
-				if (!i2p::context.DecryptTunnelBuildRecord (record + BUILD_REQUEST_RECORD_ENCRYPTED_OFFSET, clearText)) 
+				if (!i2p::context.DecryptTunnelBuildRecord (record + BUILD_REQUEST_RECORD_ENCRYPTED_OFFSET, clearText))
 				{
 					LogPrint (eLogWarning, "TransitTunnel: Failed to decrypt tunnel build record");
 					return false;
-				}	
+				}
 				if (!memcmp ((const uint8_t *)i2p::context.GetIdentHash (), clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET, 32) && // if next ident is now ours
 				    !(clearText[ECIES_BUILD_REQUEST_RECORD_FLAG_OFFSET] & TUNNEL_BUILD_RECORD_ENDPOINT_FLAG)) // and not endpoint
 				{
 					LogPrint (eLogWarning, "TransitTunnel: Next ident is ours in tunnel build record");
 					return false;
-				}	
+				}
 				uint8_t retCode = 0;
 				// decide if we should accept tunnel
-				bool accept = i2p::context.AcceptsTunnels ();
+				bool accept = i2p::context.AcceptsTunnels () && !i2p::context.IsLimitedConnectivity ();
 				if (accept)
 				{
 					auto congestionLevel = i2p::context.GetCongestionLevel (false);
 					if (congestionLevel >= CONGESTION_LEVEL_MEDIUM)
-					{	
+					{
 						if (congestionLevel < CONGESTION_LEVEL_FULL)
 						{
 							// random reject depending on congestion level
 							int level = m_Rng () % (CONGESTION_LEVEL_FULL - CONGESTION_LEVEL_MEDIUM) + CONGESTION_LEVEL_MEDIUM;
 							if (congestionLevel > level)
 								accept = false;
-						}	
-						else	
+						}
+						else
 							accept = false;
-					}	
-				}	
-					
+					}
+				}
+
 				if (accept)
 				{
 					i2p::data::IdentHash nextIdent(clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET);
 					bool isEndpoint = clearText[ECIES_BUILD_REQUEST_RECORD_FLAG_OFFSET] & TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
 					if (isEndpoint || !i2p::data::IsRouterDuplicated (nextIdent))
-					{	
+					{
 						auto transitTunnel = CreateTransitTunnel (
 								bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET),
 								nextIdent,
@@ -512,9 +523,9 @@ namespace tunnel
 								isEndpoint);
 						if (!AddTransitTunnel (transitTunnel))
 							retCode = 30;
-					}	
+					}
 					else
-						// decline tunnel going to duplicated router 
+						// decline tunnel going to duplicated router
 						retCode = 30;
 				}
 				else
@@ -598,16 +609,17 @@ namespace tunnel
 		}
 		return true;
 	}
-		
+
 	void TransitTunnels::ManageTransitTunnels (uint64_t ts)
 	{
 		for (auto it = m_TransitTunnels.begin (); it != m_TransitTunnels.end ();)
 		{
 			auto tunnel = *it;
 			if (ts > tunnel->GetCreationTime () + TUNNEL_EXPIRATION_TIMEOUT ||
-			    ts + TUNNEL_EXPIRATION_TIMEOUT < tunnel->GetCreationTime ())
+			    ts + TUNNEL_EXPIRATION_TIMEOUT < tunnel->GetCreationTime () ||
+			    (!tunnel->GetNumTransmittedBytes () && ts > tunnel->GetCreationTime () + 2*TUNNEL_EXPIRATION_THRESHOLD)) // inactive?
 			{
-				LogPrint (eLogDebug, "TransitTunnel: Transit tunnel with id ", tunnel->GetTunnelID (), " expired");
+				LogPrint (eLogDebug, "TransitTunnel: Transit tunnel with id ", tunnel->GetTunnelID (), " expired or inactive");
 				tunnels.RemoveTunnel (tunnel->GetTunnelID ());
 				it = m_TransitTunnels.erase (it);
 			}
@@ -630,6 +642,6 @@ namespace tunnel
 			if (t > timeout) timeout = t;
 		}
 		return timeout;
-	}	
+	}
 }
 }

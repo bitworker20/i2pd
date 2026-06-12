@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2023, The PurpleI2P Project
+* Copyright (c) 2013-2025, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -15,7 +15,8 @@ namespace i2p
 {
 namespace client
 {
-	MatchedTunnelDestination::MatchedTunnelDestination(const i2p::data::PrivateKeys & keys, const std::string & remoteName, const std::map<std::string, std::string> * params)
+	MatchedTunnelDestination::MatchedTunnelDestination(const i2p::data::PrivateKeys & keys,
+		const std::string & remoteName, const i2p::util::Mapping * params)
 		: RunnableClientDestination(keys, false, params),
 			m_RemoteName(remoteName) {}
 
@@ -45,7 +46,7 @@ namespace client
 		}
 		else
 		{
-			m_ResolveTimer->expires_from_now(boost::posix_time::seconds(1));
+			m_ResolveTimer->expires_after(std::chrono::seconds(1));
 			m_ResolveTimer->async_wait([&](const boost::system::error_code & ec) {
 				if(!ec)	ResolveCurrentLeaseSet();
 			});
@@ -56,7 +57,7 @@ namespace client
 	void MatchedTunnelDestination::Start()
 	{
 		ClientDestination::Start();
-		m_ResolveTimer = std::make_shared<boost::asio::deadline_timer>(GetService());
+		m_ResolveTimer = std::make_shared<boost::asio::steady_timer>(GetService());
 		GetTunnelPool()->SetCustomPeerSelector(this);
 		ResolveCurrentLeaseSet();
 	}

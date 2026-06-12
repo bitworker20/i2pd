@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -33,7 +33,7 @@ namespace garlic
 	const int ECIESX25519_SEND_EXPIRATION_TIMEOUT = 480; // in seconds
 	const int ECIESX25519_RECEIVE_EXPIRATION_TIMEOUT = 600; // in seconds
 	const int ECIESX25519_SESSION_CREATE_TIMEOUT = 3; // in seconds, NSR must be send after NS received
-	const int ECIESX25519_SESSION_ESTABLISH_TIMEOUT = 15; // in seconds 
+	const int ECIESX25519_SESSION_ESTABLISH_TIMEOUT = 15; // in seconds
 	const int ECIESX25519_PREVIOUS_TAGSET_EXPIRATION_TIMEOUT = 180; // in seconds
 	const int ECIESX25519_DEFAULT_ACK_REQUEST_INTERVAL = 33000; // in milliseconds
 	const int ECIESX25519_ACK_REQUEST_MAX_NUM_ATTEMPTS = 3;
@@ -64,12 +64,12 @@ namespace garlic
 			void SetTagSetID (int tagsetID) { m_TagSetID = tagsetID; };
 
 			uint32_t GetMsgID () const { return (m_TagSetID << 16) + m_NextIndex; }; // (tagsetid << 16) + N
-			
+
 		private:
 
 			i2p::data::Tag<64> m_SessionTagKeyData;
 			uint8_t m_SessTagConstant[32], m_SymmKeyCK[32], m_CurrentSymmKeyCK[64], m_NextRootKey[32];
-			int m_NextIndex, m_NextSymmKeyIndex;
+			int m_NextIndex = 0, m_NextSymmKeyIndex = 0;
 			std::unordered_map<int, i2p::data::Tag<32> > m_ItermediateSymmKeys;
 
 			int m_TagSetID = 0;
@@ -95,7 +95,7 @@ namespace garlic
 			virtual bool IsIndexExpired (int index) const;
 			virtual bool HandleNextMessage (uint8_t * buf, size_t len, int index);
 			virtual bool IsSessionTerminated () const;
-			
+
 		private:
 
 			int m_TrimBehindIndex = 0;
@@ -113,7 +113,7 @@ namespace garlic
 			bool IsIndexExpired (int index) const override { return false; };
 			bool HandleNextMessage (uint8_t * buf, size_t len, int index) override;
 			bool IsSessionTerminated () const override { return false; }
-			
+
 		private:
 
 			GarlicDestination * m_Destination;
@@ -167,33 +167,35 @@ namespace garlic
 
 			bool HandleNextMessage (uint8_t * buf, size_t len, std::shared_ptr<ReceiveRatchetTagSet> receiveTagset, int index = 0);
 			std::shared_ptr<I2NPMessage> WrapSingleMessage (std::shared_ptr<const I2NPMessage> msg) override;
+			std::vector<std::shared_ptr<I2NPMessage> > WrapMultipleMessages (const std::vector<std::shared_ptr<const I2NPMessage> >& msgs) override;
 			std::shared_ptr<I2NPMessage> WrapOneTimeMessage (std::shared_ptr<const I2NPMessage> msg);
 
 			const uint8_t * GetRemoteStaticKey () const { return m_RemoteStaticKey; }
 			i2p::data::CryptoKeyType GetRemoteStaticKeyType () const { return m_RemoteStaticKeyType; }
-			void SetRemoteStaticKey (i2p::data::CryptoKeyType keyType, const uint8_t * key) 
-			{ 
+			void SetRemoteStaticKey (i2p::data::CryptoKeyType keyType, const uint8_t * key)
+			{
 				m_RemoteStaticKeyType = keyType;
-				memcpy (m_RemoteStaticKey, key, 32); 
+				memcpy (m_RemoteStaticKey, key, 32);
 			}
 			void Terminate () { m_IsTerminated = true; }
 			void SetDestination (const i2p::data::IdentHash& dest)
 			{
 				if (!m_Destination) m_Destination.reset (new i2p::data::IdentHash (dest));
 			}
-			const i2p::data::IdentHash * GetDestinationPtr () const { return m_Destination ? m_Destination.get () : nullptr; }; // for pongs 
+			const i2p::data::IdentHash * GetDestinationPtr () const { return m_Destination ? m_Destination.get () : nullptr; }; // for pongs
 			bool CheckExpired (uint64_t ts); // true is expired
 			bool CanBeRestarted (uint64_t ts) const { return ts > m_SessionCreatedTimestamp + ECIESX25519_RESTART_TIMEOUT; }
 			bool IsInactive (uint64_t ts) const { return ts > m_LastActivityTimestamp + ECIESX25519_INACTIVITY_TIMEOUT && CanBeRestarted (ts); }
 			void CleanupReceiveNSRKeys (); // called from ReceiveRatchetTagSet at Alice's side
-			
+			bool IsResponseRequired () const { return m_State == eSessionStateNewSessionReceived || m_SendReverseKey || !m_AckRequests.empty (); };
+
 			bool IsRatchets () const override { return true; };
 			bool IsReadyToSend () const override { return m_State != eSessionStateNewSessionSent; };
 			bool IsTerminated () const override { return m_IsTerminated; }
 			uint64_t GetLastActivityTimestamp () const override { return m_LastActivityTimestamp; };
 			void SetAckRequestInterval (int interval) override { m_AckRequestInterval = interval; };
 			bool CleanupUnconfirmedTags () override; // return true if unaswered Ack requests, called from I2CP
-			
+
 		protected:
 
 			i2p::crypto::NoiseSymmetricState& GetNoiseState () { return *this; };
@@ -201,7 +203,7 @@ namespace garlic
 			void CreateNonce (uint64_t seqn, uint8_t * nonce);
 			void HandlePayload (const uint8_t * buf, size_t len, const std::shared_ptr<ReceiveRatchetTagSet>& receiveTagset, int index);
 			bool MessageConfirmed (uint32_t msgID) override;
-			
+
 		private:
 
 			bool GenerateEphemeralKeysAndEncode (uint8_t * buf); // buf is 32 bytes
@@ -218,11 +220,15 @@ namespace garlic
 			bool NewExistingSessionMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
 
 			size_t CreatePayload (std::shared_ptr<const I2NPMessage> msg, bool first, uint8_t * payload);
-			size_t CreateGarlicClove (std::shared_ptr<const I2NPMessage> msg, uint8_t * buf, size_t len);
+			size_t CreateGarlicClove (std::shared_ptr<const I2NPMessage> msg, uint8_t * buf, size_t len, bool alwaysLocal = false);
 			size_t CreateLeaseSetClove (std::shared_ptr<const i2p::data::LocalLeaseSet> ls, uint64_t ts, uint8_t * buf, size_t len);
+			size_t CreatePaddingClove (uint8_t paddingSize, uint8_t * buf, size_t len);
 
 			void GenerateMoreReceiveTags (std::shared_ptr<ReceiveRatchetTagSet> receiveTagset, int numTags);
 			void NewNextSendRatchet ();
+
+			std::shared_ptr<I2NPMessage> WrapPayload (const uint8_t * payload, size_t len);
+			uint8_t GetNextPaddingSize (size_t payloadLen);
 
 		private:
 
@@ -231,10 +237,10 @@ namespace garlic
 			uint8_t m_Aepk[32]; // Alice's ephemeral keys, for incoming only
 			uint8_t m_NSREncodedKey[32], m_NSRH[32], m_NSRKey[32]; // new session reply, for incoming only
 			std::shared_ptr<i2p::crypto::X25519Keys> m_EphemeralKeys;
-#if OPENSSL_PQ	
+#if OPENSSL_PQ
 			std::unique_ptr<i2p::crypto::MLKEMKeys> m_PQKeys;
-			std::unique_ptr<std::vector<uint8_t> > m_NSREncodedPQKey;
-#endif			
+			std::unique_ptr<std::array<uint8_t, 64> > m_NSRCK; // before cipher text encryptio
+#endif
 			SessionState m_State = eSessionStateNew;
 			uint64_t m_SessionCreatedTimestamp = 0, m_LastActivityTimestamp = 0, // incoming (in seconds)
 				m_LastSentTimestamp = 0; // in milliseconds
@@ -243,13 +249,12 @@ namespace garlic
 			std::list<std::pair<uint16_t, int> > m_AckRequests; // incoming (tagsetid, index)
 			bool m_SendReverseKey = false, m_SendForwardKey = false, m_IsTerminated = false;
 			std::unique_ptr<DHRatchet> m_NextReceiveRatchet, m_NextSendRatchet;
-			uint8_t m_PaddingSizes[32], m_NextPaddingSize;
 
 			uint64_t m_LastAckRequestSendTime = 0; // milliseconds
-			uint32_t m_AckRequestMsgID = 0; 
+			uint32_t m_AckRequestMsgID = 0;
 			int m_AckRequestNumAttempts = 0;
 			int m_AckRequestInterval = ECIESX25519_DEFAULT_ACK_REQUEST_INTERVAL; // milliseconds
-			
+
 		public:
 
 			// for HTTP only

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -12,6 +12,7 @@
 #include "Log.h"
 #include "RouterContext.h"
 #include "Transports.h"
+#include "Timestamp.h"
 #include "TunnelGateway.h"
 
 namespace i2p
@@ -19,14 +20,13 @@ namespace i2p
 namespace tunnel
 {
 	TunnelGatewayBuffer::TunnelGatewayBuffer ():
-		m_CurrentTunnelDataMsg (nullptr), m_RemainingSize (0), m_NonZeroRandomBuffer (nullptr)
+		m_CurrentTunnelDataMsg (nullptr), m_RemainingSize (0)
 	{
 	}
 
 	TunnelGatewayBuffer::~TunnelGatewayBuffer ()
 	{
 		ClearTunnelDataMsgs ();
-		if (m_NonZeroRandomBuffer) delete[] m_NonZeroRandomBuffer;
 	}
 
 	void TunnelGatewayBuffer::PutI2NPMsg (const TunnelMessageBlock& block)
@@ -36,12 +36,12 @@ namespace tunnel
 		{
 			CreateCurrentTunnelDataMessage ();
 			if (block.data && block.data->onDrop)
-			{	
+			{
 				// onDrop is called for the first fragment in tunnel message
-				// that's usually true for short TBMs or lookups 
+				// that's usually true for short TBMs or lookups
 				m_CurrentTunnelDataMsg->onDrop = block.data->onDrop;
 				block.data->onDrop = nullptr;
-			}	
+			}
 			messageCreated = true;
 		}
 
@@ -189,13 +189,14 @@ namespace tunnel
 			// non-zero padding
 			if (!m_NonZeroRandomBuffer) // first time?
 			{
-				m_NonZeroRandomBuffer = new uint8_t[TUNNEL_DATA_MAX_PAYLOAD_SIZE];
-				RAND_bytes (m_NonZeroRandomBuffer, TUNNEL_DATA_MAX_PAYLOAD_SIZE);
-				for (size_t i = 0; i < TUNNEL_DATA_MAX_PAYLOAD_SIZE; i++)
-					if (!m_NonZeroRandomBuffer[i]) m_NonZeroRandomBuffer[i] = 1;
+				m_NonZeroRandomBuffer = std::make_unique<std::array<uint8_t, TUNNEL_DATA_MAX_PAYLOAD_SIZE> >();
+				RAND_bytes (m_NonZeroRandomBuffer->data(), TUNNEL_DATA_MAX_PAYLOAD_SIZE);
+				m_Rng = std::make_unique<std::mt19937>(i2p::util::GetMonotonicMicroseconds ()%1000000LL);
+				for (auto& it: *m_NonZeroRandomBuffer)
+					if (!it) it = (uint8_t)(((*m_Rng) ()) % 255 + 1);
 			}
-			auto randomOffset = rand () % (TUNNEL_DATA_MAX_PAYLOAD_SIZE - paddingSize + 1);
-			memcpy (buf + 24, m_NonZeroRandomBuffer + randomOffset, paddingSize);
+			auto randomOffset = ((*m_Rng) ()) % (TUNNEL_DATA_MAX_PAYLOAD_SIZE - paddingSize + 1);
+			memcpy (buf + 24, m_NonZeroRandomBuffer->data() + randomOffset, paddingSize);
 		}
 
 		// we can't fill message header yet because encryption is required
@@ -235,9 +236,9 @@ namespace tunnel
 			m_NumSentBytes += TUNNEL_DATA_MSG_SIZE;
 		}
 		m_Buffer.ClearTunnelDataMsgs ();
-		// send 
+		// send
 		if (!m_Sender) m_Sender = std::make_unique<TunnelTransportSender>();
-		m_Sender->SendMessagesTo (m_Tunnel.GetNextIdentHash (), std::move (newTunnelMsgs));		
+		m_Sender->SendMessagesTo (m_Tunnel.GetNextIdentHash (), std::move (newTunnelMsgs));
 	}
 }
 }

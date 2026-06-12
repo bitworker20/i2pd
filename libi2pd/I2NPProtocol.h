@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -99,7 +99,7 @@ namespace i2p
 	const size_t SHORT_REQUEST_RECORD_REQUEST_TIME_OFFSET = SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE + 1;
 	const size_t SHORT_REQUEST_RECORD_REQUEST_EXPIRATION_OFFSET = SHORT_REQUEST_RECORD_REQUEST_TIME_OFFSET + 4;
 	const size_t SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET = SHORT_REQUEST_RECORD_REQUEST_EXPIRATION_OFFSET + 4;
-	const size_t SHORT_REQUEST_RECORD_PADDING_OFFSET = SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET + 4;
+	const size_t SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET = SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET + 4;
 	const size_t SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE = 154;
 
 	// ShortResponseRecord
@@ -228,28 +228,7 @@ namespace tunnel
 			return *this;
 		}
 
-		// for SSU only
-		uint8_t * GetSSUHeader () { return buf + offset + I2NP_HEADER_SIZE - I2NP_SHORT_HEADER_SIZE; };
-		void FromSSU (uint32_t msgID) // we have received SSU message and convert it to regular
-		{
-			const uint8_t * ssu = GetSSUHeader ();
-			GetHeader ()[I2NP_HEADER_TYPEID_OFFSET] = ssu[I2NP_SHORT_HEADER_TYPEID_OFFSET]; // typeid
-			SetMsgID (msgID);
-			SetExpiration (bufbe32toh (ssu + I2NP_SHORT_HEADER_EXPIRATION_OFFSET)*1000LL);
-			SetSize (len - offset - I2NP_HEADER_SIZE);
-			SetChks (0);
-		}
-		uint32_t ToSSU () // return msgID
-		{
-			uint8_t header[I2NP_HEADER_SIZE];
-			memcpy (header, GetHeader (), I2NP_HEADER_SIZE);
-			uint8_t * ssu = GetSSUHeader ();
-			ssu[I2NP_SHORT_HEADER_TYPEID_OFFSET] = header[I2NP_HEADER_TYPEID_OFFSET]; // typeid
-			htobe32buf (ssu + I2NP_SHORT_HEADER_EXPIRATION_OFFSET, bufbe64toh (header + I2NP_HEADER_EXPIRATION_OFFSET)/1000LL);
-			len = offset + I2NP_SHORT_HEADER_SIZE + bufbe16toh (header + I2NP_HEADER_SIZE_OFFSET);
-			return bufbe32toh (header + I2NP_HEADER_MSGID_OFFSET);
-		}
-		// for NTCP2 only
+		// for NTCP2 and SSU2
 		uint8_t * GetNTCP2Header () { return GetPayload () - I2NP_NTCP2_HEADER_SIZE; };
 		size_t GetNTCP2Length () const { return GetPayloadLength () + I2NP_NTCP2_HEADER_SIZE; };
 		void FromNTCP2 ()
@@ -299,7 +278,7 @@ namespace tunnel
 	std::shared_ptr<I2NPMessage> CreateLeaseSetDatabaseLookupMsg (const i2p::data::IdentHash& dest,
 		const std::unordered_set<i2p::data::IdentHash>& excludedFloodfills,
 		std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel,
-		const uint8_t * replyKey, const uint8_t * replyTag, bool replyECIES = false);
+		const uint8_t * replyKey, const uint8_t * replyTag);
 	std::shared_ptr<I2NPMessage> CreateDatabaseSearchReply (const i2p::data::IdentHash& ident, std::vector<i2p::data::IdentHash> routers);
 
 	std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::data::RouterInfo> router = nullptr, uint32_t replyToken = 0, std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel = nullptr);
@@ -319,10 +298,15 @@ namespace tunnel
 	size_t GetI2NPMessageLength (const uint8_t * msg, size_t len);
 	void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg);
 
+	const uint64_t TUNNEL_BUILD_MESSAGES_MIN_INTERVAL = 500; // in milliseconds
+	const int MAX_NUM_THROTTLED_TUNNEL_BUILD_MESSAGES = 5;
+	const int MAX_NUM_DROPPED_TUNNEL_BUILD_MESSAGES = 1000;
 	class I2NPMessagesHandler
 	{
 		public:
 
+			I2NPMessagesHandler (): m_LastTunnelBuildMessageTimestamp (0),
+				m_NumThrottledTunnelBuildMessages (0), m_NumDroppedTunnelBuildMessages (0) {};
 			~I2NPMessagesHandler ();
 			void PutNextMessage (std::shared_ptr<I2NPMessage>&& msg);
 			void Flush ();
@@ -330,6 +314,8 @@ namespace tunnel
 		private:
 
 			std::list<std::shared_ptr<I2NPMessage> > m_TunnelMsgs, m_TunnelGatewayMsgs;
+			uint64_t m_LastTunnelBuildMessageTimestamp; // in milliseconds
+			int m_NumThrottledTunnelBuildMessages, m_NumDroppedTunnelBuildMessages;
 	};
 }
 

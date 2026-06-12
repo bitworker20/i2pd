@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -174,7 +174,7 @@ namespace fs {
 		return;
 #elif defined(__HAIKU__)
 		char home[PATH_MAX]; // /boot/home/config/settings
-		if (find_directory(B_USER_SETTINGS_DIRECTORY, -1, false, home, PATH_MAX) == B_OK)	
+		if (find_directory(B_USER_SETTINGS_DIRECTORY, -1, false, home, PATH_MAX) == B_OK)
 			dataDir = std::string(home) + "/" + appName;
 		else
 			dataDir = "/tmp/" + appName;
@@ -290,31 +290,41 @@ namespace fs {
 		root = path + i2p::fs::dirSep + name;
 	}
 
-	bool HashedStorage::Init(const char * chars, size_t count) {
-		if (!fs_lib::exists(root)) {
-			fs_lib::create_directories(root);
-		}
+	bool HashedStorage::Init(const char * chars, size_t count)
+	{
+		try
+		{
+			if (!fs_lib::exists(root))
+				fs_lib::create_directories(root);
 
-		for (size_t i = 0; i < count; i++) {
-			auto p = root + i2p::fs::dirSep + prefix1 + chars[i];
-			if (fs_lib::exists(p))
-				continue;
-#if TARGET_OS_SIMULATOR
-			// ios simulator fs says it is case sensitive, but it is not
-			boost::system::error_code ec;
-			if (fs_lib::create_directory(p, ec))
-				continue;
-			switch (ec.value()) {
-				case boost::system::errc::file_exists:
-				case boost::system::errc::success:
+			for (size_t i = 0; i < count; i++)
+			{
+				auto p = root + i2p::fs::dirSep + prefix1 + chars[i];
+				if (fs_lib::exists(p))
 					continue;
-				default:
-					throw boost::system::system_error( ec, __func__ );
-			}
+#if TARGET_OS_SIMULATOR
+				// ios simulator fs says it is case sensitive, but it is not
+				boost::system::error_code ec;
+				if (fs_lib::create_directory(p, ec))
+					continue;
+				switch (ec.value()) {
+					case boost::system::errc::file_exists:
+					case boost::system::errc::success:
+						continue;
+					default:
+						throw boost::system::system_error( ec, __func__ );
+				}
 #else
-			if (fs_lib::create_directory(p))
-				continue; /* ^ throws exception on failure */
+				if (fs_lib::create_directory(p))
+					continue; /* ^ throws exception on failure */
 #endif
+				return false;
+			}
+		}
+		catch (std::exception& ex)
+		{
+			LogPrint (eLogCritical, "FS: Can't init storage ", root, ": ", ex.what());
+			ThrowFatal ("Can't init FS storage ", root, ": ", ex.what());
 			return false;
 		}
 		return true;

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -71,8 +71,8 @@ namespace i2p
 	{
 		auto exp = GetExpiration ();
 		return (ts > exp + I2NP_MESSAGE_CLOCK_SKEW) || (ts < exp - 3*I2NP_MESSAGE_CLOCK_SKEW); // check if expired or too far in future
-	}	
-	
+	}
+
 	bool I2NPMessage::IsExpired () const
 	{
 		return IsExpired (i2p::util::GetMillisecondsSinceEpoch ());
@@ -189,7 +189,7 @@ namespace i2p
 	std::shared_ptr<I2NPMessage> CreateLeaseSetDatabaseLookupMsg (const i2p::data::IdentHash& dest,
 		const std::unordered_set<i2p::data::IdentHash>& excludedFloodfills,
 		std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel, const uint8_t * replyKey,
-			const uint8_t * replyTag, bool replyECIES)
+			const uint8_t * replyTag)
 	{
 		int cnt = excludedFloodfills.size ();
 		auto m = cnt > 7 ? NewI2NPMessage () : NewI2NPShortMessage ();
@@ -198,9 +198,8 @@ namespace i2p
 		buf += 32;
 		memcpy (buf, replyTunnel->GetNextIdentHash (), 32); // reply tunnel GW
 		buf += 32;
-		*buf = DATABASE_LOOKUP_DELIVERY_FLAG | DATABASE_LOOKUP_TYPE_LEASESET_LOOKUP; // flags
-		*buf |= (replyECIES ? DATABASE_LOOKUP_ECIES_FLAG : DATABASE_LOOKUP_ENCRYPTION_FLAG);
-		buf ++;
+		*buf = DATABASE_LOOKUP_DELIVERY_FLAG | DATABASE_LOOKUP_TYPE_LEASESET_LOOKUP | DATABASE_LOOKUP_ECIES_FLAG; // flags
+		buf++;
 		htobe32buf (buf, replyTunnel->GetNextTunnelID ()); // reply tunnel ID
 		buf += 4;
 
@@ -223,16 +222,8 @@ namespace i2p
 		// encryption
 		memcpy (buf, replyKey, 32);
 		buf[32] = 1; // 1 tag
-		if (replyECIES)
-		{
-			memcpy (buf + 33, replyTag, 8); // 8 bytes tag
-			buf += 41;
-		}
-		else
-		{
-			memcpy (buf + 33, replyTag, 32); // 32 bytes tag
-			buf += 65;
-		}
+		memcpy (buf + 33, replyTag, 8); // 8 bytes tag
+		buf += 41;
 
 		m->len += (buf - m->GetPayload ());
 		m->FillI2NPMessageHeader (eI2NPDatabaseLookup);
@@ -424,11 +415,11 @@ namespace i2p
 			return msg;
 		}
 		else
-		{	
+		{
 			auto newMsg = CreateTunnelGatewayMsg (tunnelID, msg->GetBuffer (), msg->GetLength ());
-			if (msg->onDrop) newMsg->onDrop = msg->onDrop; 
+			if (msg->onDrop) newMsg->onDrop = msg->onDrop;
 			return newMsg;
-		}	
+		}
 	}
 
 	std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, I2NPMessageType msgType,
@@ -498,7 +489,7 @@ namespace i2p
 				case eI2NPDatabaseSearchReply:
 					if (!msg->from || !msg->from->GetTunnelPool () || msg->from->GetTunnelPool ()->IsExploratory ())
 						i2p::data::netdb.PostDatabaseSearchReplyMsg (msg);
-				break;	
+				break;
 				case eI2NPDatabaseLookup:
 					// forward to netDb if floodfill and came directly
 					if (!msg->from && i2p::context.IsFloodfill ())
@@ -552,6 +543,37 @@ namespace i2p
 				case eI2NPTunnelGateway:
 					m_TunnelGatewayMsgs.push_back (msg);
 				break;
+				case eI2NPVariableTunnelBuild:
+				case eI2NPTunnelBuild:
+				case eI2NPShortTunnelBuild:
+				{
+					auto ts = i2p::util::GetMonotonicMilliseconds ();
+					if (!m_LastTunnelBuildMessageTimestamp ||
+						ts > m_LastTunnelBuildMessageTimestamp + TUNNEL_BUILD_MESSAGES_MIN_INTERVAL ||
+						m_NumDroppedTunnelBuildMessages > MAX_NUM_DROPPED_TUNNEL_BUILD_MESSAGES)
+					{
+						m_NumThrottledTunnelBuildMessages = 0;
+						if (m_NumDroppedTunnelBuildMessages > 0)
+						{
+							LogPrint (eLogWarning, "I2NP: ", m_NumDroppedTunnelBuildMessages, " tunnel build messages dropped");
+							m_NumDroppedTunnelBuildMessages = 0;
+						}
+						HandleI2NPMessage (msg);
+					}
+					else
+					{
+						if (m_NumThrottledTunnelBuildMessages < MAX_NUM_THROTTLED_TUNNEL_BUILD_MESSAGES)
+						{
+							// let TBM go through
+							m_NumThrottledTunnelBuildMessages++;
+							HandleI2NPMessage (msg);
+						}
+						else // drop TBM
+							m_NumDroppedTunnelBuildMessages++;
+					}
+					m_LastTunnelBuildMessageTimestamp = ts;
+					break;
+				}
 				default:
 					HandleI2NPMessage (msg);
 			}

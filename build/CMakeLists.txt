@@ -9,6 +9,12 @@ endif()
 # for debugging
 #set(CMAKE_VERBOSE_MAKEFILE on)
 
+# fix: error C2039: 'string_view': is not a member of 'std'
+# MSVC defaults to C++14
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # paths
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules")
 set(CMAKE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/..")
@@ -37,6 +43,7 @@ option(WITH_UPNP            "Include support for UPnP client"         OFF)
 option(WITH_GIT_VERSION     "Use git commit info as version"          OFF)
 option(WITH_ADDRSANITIZER   "Build with address sanitizer unix only"  OFF)
 option(WITH_THREADSANITIZER "Build with thread sanitizer unix only"   OFF)
+option(WITH_UNDEFSANITIZER  "Build with undefined sanitizer unix only" OFF)
 option(BUILD_TESTING        "Build tests"                             OFF)
 
 IF(BUILD_TESTING)
@@ -184,18 +191,34 @@ if(UNIX)
   endif()
 endif()
 
+set(_SANITIZE_FLAGS "")
+
 if(WITH_ADDRSANITIZER)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+  list(APPEND _SANITIZE_FLAGS -fsanitize=address)
 endif()
 
 if(WITH_THREADSANITIZER)
   if(WITH_ADDRSANITIZER)
     message(FATAL_ERROR "thread sanitizer option cannot be combined with address sanitizer")
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+    list(APPEND _SANITIZE_FLAGS -fsanitize=thread)
   endif()
+endif()
+
+if(WITH_UNDEFSANITIZER)
+  list(APPEND _SANITIZE_FLAGS -fsanitize=undefined)
+  list(APPEND _SANITIZE_FLAGS -fno-sanitize=vptr)
+  list(APPEND _SANITIZE_FLAGS -fno-sanitize=enum)
+endif()
+
+if(NOT "${_SANITIZE_FLAGS}" STREQUAL "")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
+
+  list(JOIN _SANITIZE_FLAGS " " _X)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_X}")
+
+  # Is this really needed? Compiler (and CXX flags) used to link
+  #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_X}")
 endif()
 
 if (CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10.0 AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 8.0) # gcc 8-9
@@ -256,14 +279,14 @@ else()
   if(NOT MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
   endif()
-  add_definitions(-DBOOST_ATOMIC_DYN_LINK -DBOOST_SYSTEM_DYN_LINK -DBOOST_FILESYSTEM_DYN_LINK -DBOOST_PROGRAM_OPTIONS_DYN_LINK)
+  add_definitions(-DBOOST_ATOMIC_DYN_LINK -DBOOST_FILESYSTEM_DYN_LINK -DBOOST_PROGRAM_OPTIONS_DYN_LINK)
   if(WIN32)
     set(Boost_USE_STATIC_LIBS OFF)
     set(Boost_USE_STATIC_RUNTIME OFF)
   endif()
 endif()
 
-find_package(Boost REQUIRED COMPONENTS system filesystem program_options)
+find_package(Boost REQUIRED COMPONENTS filesystem program_options atomic)
 if(NOT DEFINED Boost_FOUND)
   message(SEND_ERROR "Boost is not found, or your boost version was below 1.46. Please download Boost!")
 endif()
@@ -296,11 +319,11 @@ if(NOT MSVC)
 # check for c++20 & c++17 support
   include(CheckCXXCompilerFlag)
 
-  if(Boost_VERSION VERSION_GREATER_EQUAL "1.83") # min boost version for c++20
+  if(Boost_VERSION VERSION_GREATER_EQUAL "1.81") # min boost version for c++20
     CHECK_CXX_COMPILER_FLAG("-std=c++20" CXX20_SUPPORTED)
   endif()
   CHECK_CXX_COMPILER_FLAG("-std=c++17" CXX17_SUPPORTED)
- 
+
 
   if(CXX20_SUPPORTED)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
@@ -336,7 +359,10 @@ message(STATUS "  GIT VERSION      : ${WITH_GIT_VERSION}")
 endif()
 message(STATUS "  ADDRSANITIZER    : ${WITH_ADDRSANITIZER}")
 message(STATUS "  THREADSANITIZER  : ${WITH_THREADSANITIZER}")
+message(STATUS "  UNDEFSANITIZER   : ${WITH_UNDEFSANITIZER}")
 message(STATUS "---------------------------------------")
+
+target_link_libraries(libi2pd PUBLIC ZLIB::ZLIB OpenSSL::SSL OpenSSL::Crypto ${Boost_LIBRARIES} Threads::Threads)
 
 if(WITH_BINARY)
   if(WIN32)

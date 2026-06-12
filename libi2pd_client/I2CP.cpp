@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -26,9 +26,9 @@ namespace client
 
 	I2CPDestination::I2CPDestination (boost::asio::io_context& service, std::shared_ptr<I2CPSession> owner,
 		std::shared_ptr<const i2p::data::IdentityEx> identity, bool isPublic, bool isSameThread,
-	    const std::map<std::string, std::string>& params):
+	    const i2p::util::Mapping& params):
 		LeaseSetDestination (service, isPublic, &params),
-		m_Owner (owner), m_Identity (identity), m_IsCreatingLeaseSet (false), m_IsSameThread (isSameThread), 
+		m_Owner (owner), m_Identity (identity), m_IsCreatingLeaseSet (false), m_IsSameThread (isSameThread),
 		m_LeaseSetCreationTimer (service), m_ReadinessCheckTimer (service)
 	{
 	}
@@ -88,10 +88,10 @@ namespace client
 				auto it = m_EncryptionKeys.find (preferredCrypto);
 				if (it != m_EncryptionKeys.end ())
 					encryptionKey = it->second;
-			}	
+			}
 			if (!encryptionKey)
 				encryptionKey = m_EncryptionKeys.rbegin ()->second;
-		}	
+		}
 		if (encryptionKey)
 			return encryptionKey->decryptor->Decrypt (encrypted, data);
 		else
@@ -111,24 +111,56 @@ namespace client
 	{
 #if __cplusplus >= 202002L // C++20
 		return m_EncryptionKeys.contains (keyType);
-#else		
+#else
 		return m_EncryptionKeys.count (keyType) > 0;
-#endif	
+#endif
 	}
 
 	i2p::data::CryptoKeyType I2CPDestination::GetPreferredCryptoType () const
 	{
 		return !m_EncryptionKeys.empty () ? m_EncryptionKeys.rbegin ()->first : 0;
-	}	
+	}
 
 	i2p::data::CryptoKeyType I2CPDestination::GetRatchetsHighestCryptoType () const
 	{
 		if (m_EncryptionKeys.empty ()) return 0;
-		auto cryptoType = m_EncryptionKeys.rbegin ()->first; 
+		auto cryptoType = m_EncryptionKeys.rbegin ()->first;
 		return cryptoType >= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD ? cryptoType : 0;
 	}
-		
-	void I2CPDestination::HandleDataMessage (const uint8_t * buf, size_t len, 
+
+	void I2CPDestination::ScheduleSessionResponseTimer (std::shared_ptr<i2p::garlic::ECIESX25519AEADRatchetSession> session)
+	{
+		if (!session) return;
+		auto timer = std::make_shared<boost::asio::steady_timer>(GetService ());
+		timer->expires_after (std::chrono::milliseconds(I2CP_RATCHETS_RESPONSE_TIMEOUT));
+		timer->async_wait ([session, s = GetSharedFromThis (), timer](const boost::system::error_code& ecode)
+		{
+			if (ecode != boost::asio::error::operation_aborted &&
+				!session->IsTerminated () && session->IsResponseRequired () && // response still required
+				session->GetDestinationPtr ()) // we know ident hash
+			{
+				auto pool = s->GetTunnelPool ();
+				if (!pool) return;
+				auto ls = s->FindLeaseSet (*session->GetDestinationPtr ());
+				if (!ls) return;
+				auto garlic = session->WrapSingleMessage (nullptr); // no data messages
+				if (!garlic) return;
+				auto leases = ls->GetNonExpiredLeases (false);
+				if (!leases.empty ())
+				{
+					auto remoteLease = leases[s->GetRng ()() % leases.size ()];
+					auto outboundTunnel = pool->GetNextOutboundTunnel ();
+					if (outboundTunnel)
+					{
+						LogPrint (eLogDebug, "I2CP: Sending ratchets session response");
+						s->SendMsg (garlic, outboundTunnel, remoteLease);
+					}
+				}
+			}
+		});
+	}
+
+	void I2CPDestination::HandleDataMessage (const uint8_t * buf, size_t len,
 		i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
 		uint32_t length = bufbe32toh (buf);
@@ -154,15 +186,15 @@ namespace client
 		if (!pool || pool->GetOutboundTunnels ().empty ())
 		{
 			// try again later
-			m_ReadinessCheckTimer.expires_from_now (boost::posix_time::seconds(I2CP_DESTINATION_READINESS_CHECK_INTERVAL));
+			m_ReadinessCheckTimer.expires_after (std::chrono::seconds(I2CP_DESTINATION_READINESS_CHECK_INTERVAL));
 			m_ReadinessCheckTimer.async_wait(
 				[s=GetSharedFromThis (), tunnels=std::move(tunnels)](const boost::system::error_code& ecode)
 			    {
 					if (ecode != boost::asio::error::operation_aborted)
 						s->PostCreateNewLeaseSet (tunnels);
-				});	
+				});
 			return;
-		}	
+		}
 		uint8_t priv[256] = {0};
 		i2p::data::LocalLeaseSet ls (m_Identity, priv, tunnels); // we don't care about encryption key, we need leases only
 		m_LeaseSetExpirationTime = ls.GetExpirationTime ();
@@ -177,7 +209,7 @@ namespace client
 				htobe16buf (leases - 3, sessionID);
 				size_t l = 2/*sessionID*/ + 1/*num leases*/ + i2p::data::LEASE_SIZE*numLeases;
 				m_Owner->SendI2CPMessage (I2CP_REQUEST_VARIABLE_LEASESET_MESSAGE, leases - 3, l);
-				m_LeaseSetCreationTimer.expires_from_now (boost::posix_time::seconds (I2CP_LEASESET_CREATION_TIMEOUT));
+				m_LeaseSetCreationTimer.expires_after (std::chrono::seconds (I2CP_LEASESET_CREATION_TIMEOUT));
 				auto s = GetSharedFromThis ();
 				m_LeaseSetCreationTimer.async_wait ([s](const boost::system::error_code& ecode)
 				{
@@ -230,9 +262,9 @@ namespace client
 				bool sent = SendMsg (msg, remote);
 				if (m_Owner)
 					m_Owner->SendMessageStatusMessage (nonce, sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
-			}	
+			}
 			else
-			{	
+			{
 				// send in destination's thread
 				auto s = GetSharedFromThis ();
 				boost::asio::post (GetService (),
@@ -242,7 +274,7 @@ namespace client
 						if (s->m_Owner)
 							s->m_Owner->SendMessageStatusMessage (nonce, sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
 					});
-			}	
+			}
 		}
 		else
 		{
@@ -291,11 +323,14 @@ namespace client
 				leases = remote->GetNonExpiredLeases (true); // with threshold
 			if (!leases.empty ())
 			{
-				auto pool = GetTunnelPool ();
-				remoteLease = leases[(pool ? pool->GetRng ()() : rand ()) % leases.size ()];
+				remoteLease = leases[GetRng ()() % leases.size ()];
 				auto leaseRouter = i2p::data::netdb.FindRouter (remoteLease->tunnelGateway);
-				outboundTunnel = GetTunnelPool ()->GetNextOutboundTunnel (nullptr,
-					leaseRouter ? leaseRouter->GetCompatibleTransports (false) : (i2p::data::RouterInfo::CompatibleTransports)i2p::data::RouterInfo::eAllTransports);
+				auto pool = GetTunnelPool ();
+				if (pool)
+					outboundTunnel = pool->GetNextOutboundTunnel (nullptr,
+						leaseRouter ? leaseRouter->GetCompatibleTransports (false) : (i2p::data::RouterInfo::CompatibleTransports)i2p::data::RouterInfo::eAllTransports);
+				else
+					outboundTunnel = nullptr;
 			}
 			if (remoteLease && outboundTunnel)
 				remoteSession->SetSharedRoutingPath (std::make_shared<i2p::garlic::GarlicRoutingPath> (
@@ -307,7 +342,7 @@ namespace client
 		return SendMsg (garlic, outboundTunnel, remoteLease);
 	}
 
-	bool I2CPDestination::SendMsg (std::shared_ptr<I2NPMessage> garlic, 
+	bool I2CPDestination::SendMsg (std::shared_ptr<I2NPMessage> garlic,
 	    std::shared_ptr<i2p::tunnel::OutboundTunnel> outboundTunnel, std::shared_ptr<const i2p::data::Lease> remoteLease)
 	{
 		if (remoteLease && outboundTunnel)
@@ -330,10 +365,10 @@ namespace client
 			else
 				LogPrint (eLogWarning, "I2CP: Failed to send message. No outbound tunnels");
 			return false;
-		}		
-	}	
+		}
+	}
 
-	bool I2CPDestination::SendMsg (const uint8_t * payload, size_t len, 
+	bool I2CPDestination::SendMsg (const uint8_t * payload, size_t len,
 		std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession, uint32_t nonce)
 	{
 		if (!remoteSession) return false;
@@ -348,10 +383,10 @@ namespace client
 			remoteLease = path->remoteLease;
 		}
 		else
-		{	
+		{
 			remoteSession->SetSharedRoutingPath (nullptr);
 			return false;
-		}	
+		}
 		// create Data message
 		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
 		uint8_t * buf = msg->GetPayload ();
@@ -373,10 +408,10 @@ namespace client
 	{
 		m_I2NPMsgsPool.CleanUpMt ();
 		if (m_Owner) m_Owner->CleanupRoutingSessions ();
-	}	
-		
+	}
+
 	RunnableI2CPDestination::RunnableI2CPDestination (std::shared_ptr<I2CPSession> owner,
-		std::shared_ptr<const i2p::data::IdentityEx> identity, bool isPublic, const std::map<std::string, std::string>& params):
+		std::shared_ptr<const i2p::data::IdentityEx> identity, bool isPublic, const i2p::util::Mapping& params):
 		RunnableService ("I2CP"),
 		I2CPDestination (GetIOService (), owner, identity, isPublic, false, params)
 	{
@@ -407,7 +442,7 @@ namespace client
 	}
 
 	I2CPSession::I2CPSession (I2CPServer& owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket):
-		m_Owner (owner), m_Socket (socket), m_SessionID (0xFFFF), m_MessageID (0), 
+		m_Owner (owner), m_Socket (socket), m_SessionID (0xFFFF), m_MessageID (0),
 		m_IsSendAccepted (true), m_IsSending (false)
 	{
 	}
@@ -420,10 +455,10 @@ namespace client
 	void I2CPSession::Start ()
 	{
 		if (m_Socket)
-		{	
+		{
 			m_Socket->set_option (boost::asio::socket_base::receive_buffer_size (I2CP_MAX_MESSAGE_LENGTH));
 			m_Socket->set_option (boost::asio::socket_base::send_buffer_size (I2CP_MAX_MESSAGE_LENGTH));
-		}	
+		}
 		ReadProtocolByte ();
 	}
 
@@ -475,22 +510,22 @@ namespace client
 					boost::system::error_code ec;
 					size_t moreBytes = m_Socket->available(ec);
 					if (!ec)
-					{	
+					{
 						if (moreBytes >= m_PayloadLen)
 						{
 							// read and process payload immediately if available
 							moreBytes = boost::asio::read (*m_Socket, boost::asio::buffer(m_Payload, m_PayloadLen), boost::asio::transfer_all (), ec);
 							HandleReceivedPayload (ec, moreBytes);
-						}	
-						else	
+						}
+						else
 							ReceivePayload ();
-					}	
+					}
 					else
 					{
 						LogPrint (eLogWarning, "I2CP: Socket error: ", ec.message ());
 						Terminate ();
-					}	
-				}	
+					}
+				}
 				else
 				{
 					LogPrint (eLogError, "I2CP: Unexpected payload length ", m_PayloadLen);
@@ -620,50 +655,6 @@ namespace client
 			m_IsSending = false;
 	}
 
-	std::string_view I2CPSession::ExtractString (const uint8_t * buf, size_t len) const
-	{
-		uint8_t l = buf[0];
-		if (l > len) l = len;
-		return { (const char *)(buf + 1), l };
-	}
-
-	size_t I2CPSession::PutString (uint8_t * buf, size_t len, std::string_view str)
-	{
-		auto l = str.length ();
-		if (l + 1 >= len) l = len - 1;
-		if (l > 255) l = 255; // 1 byte max
-		buf[0] = l;
-		memcpy (buf + 1, str.data (), l);
-		return l + 1;
-	}
-
-	void I2CPSession::ExtractMapping (const uint8_t * buf, size_t len, std::map<std::string, std::string>& mapping) const
-	// TODO: move to Base.cpp
-	{
-		size_t offset = 0;
-		while (offset < len)
-		{
-			auto param = ExtractString (buf + offset, len - offset);
-			offset += param.length () + 1;
-			if (buf[offset] != '=')
-			{
-				LogPrint (eLogWarning, "I2CP: Unexpected character ", buf[offset], " instead '=' after ", param);
-				break;
-			}
-			offset++;
-
-			auto value = ExtractString (buf + offset, len - offset);
-			offset += value.length () + 1;
-			if (buf[offset] != ';')
-			{
-				LogPrint (eLogWarning, "I2CP: Unexpected character ", buf[offset], " instead ';' after ", value);
-				break;
-			}
-			offset++;
-			mapping.emplace (param, value);
-		}
-	}
-
 	void I2CPSession::GetDateMessageHandler (const uint8_t * buf, size_t len)
 	{
 		constexpr std::string_view version(I2P_VERSION);
@@ -672,7 +663,7 @@ namespace client
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		htobe64buf (payload.data(), ts);
 		// send our version back
-		PutString (payload.data() + 8, payload.size() - 8, version);
+		i2p::util::Mapping::WriteString (version, payload.data() + 8, payload.size() - 8);
 		SendI2CPMessage (I2CP_SET_DATE_MESSAGE, payload.data(), payload.size());
 	}
 
@@ -701,8 +692,8 @@ namespace client
 			SendSessionStatusMessage (eI2CPSessionStatusInvalid); // invalid
 			return;
 		}
-		std::map<std::string, std::string> params;
-		ExtractMapping (buf + offset, optionsSize, params);
+		i2p::util::Mapping params;
+		params.FromBuffer (optionsSize, buf + offset, len - offset);
 		offset += optionsSize; // options
 		if (params[I2CP_PARAM_MESSAGE_RELIABILITY] == "none") m_IsSendAccepted = false;
 
@@ -738,7 +729,7 @@ namespace client
 			SendSessionStatusMessage (eI2CPSessionStatusInvalid); // invalid
 		}
 	}
-	
+
 	void I2CPSession::DestroySessionMessageHandler (const uint8_t * buf, size_t len)
 	{
 		SendSessionStatusMessage (eI2CPSessionStatusDestroyed); // destroy
@@ -767,8 +758,8 @@ namespace client
 						if (optssize <= len - sizeof(uint16_t) - sizeof(uint64_t) - identsz - ident.GetSignatureLen() - sizeof(uint16_t))
 						{
 							buf += sizeof(uint16_t);
-							std::map<std::string, std::string> opts;
-							ExtractMapping(buf, optssize, opts);
+							i2p::util::Mapping opts;
+							opts.FromBuffer (optssize, buf, optssize);
 							buf += optssize;
 							//uint64_t date = bufbe64toh(buf);
 							buf += sizeof(uint64_t);
@@ -838,11 +829,11 @@ namespace client
 		{
 			if (it->second->IsTerminated ())
 				it = m_RoutingSessions.erase (it);
-			else	
+			else
 				it++;
-		}	
-	}	
-		
+		}
+	}
+
 	void I2CPSession::CreateLeaseSetMessageHandler (const uint8_t * buf, size_t len)
 	{
 		uint16_t sessionID = bufbe16toh (buf);
@@ -921,7 +912,7 @@ namespace client
 						offset += 4;
 						uint32_t nonce = bufbe32toh (buf + offset + payloadLen);
 						if (m_Destination->IsReady ())
-						{	
+						{
 							if (m_IsSendAccepted)
 								SendMessageStatusMessage (nonce, eI2CPMessageStatusAccepted); // accepted
 							std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession;
@@ -929,25 +920,25 @@ namespace client
 								std::lock_guard<std::mutex> l(m_RoutingSessionsMutex);
 								auto it = m_RoutingSessions.find (ident + i2p::data::DEFAULT_IDENTITY_SIZE - 35); // 32 bytes signing key
 								if (it != m_RoutingSessions.end ())
-								{		
-									if (!it->second->IsTerminated ())
+								{
+									if (!it->second->IsTerminated () && it->second->IsReadyToSend ())
 										remoteSession = it->second;
 									else
 										m_RoutingSessions.erase (it);
 								}
 							}
 							if (!remoteSession || !m_Destination->SendMsg (buf + offset, payloadLen, remoteSession, nonce))
-							{	
+							{
 								i2p::data::IdentHash identHash;
 								SHA256(ident, identSize, identHash); // calculate ident hash, because we don't need full identity
 								m_Destination->SendMsgTo (buf + offset, payloadLen, identHash, nonce);
-							}	
+							}
 						}
 						else
 						{
 							LogPrint(eLogInfo, "I2CP: Destination is not ready");
 							SendMessageStatusMessage (nonce, eI2CPMessageStatusNoLocalTunnels);
-						}	
+						}
 					}
 					else
 						LogPrint(eLogError, "I2CP: Cannot send message, too big");
@@ -980,7 +971,7 @@ namespace client
 				break;
 				case 1: // address
 				{
-					auto name = ExtractString (buf + 11, len - 11);
+					auto name = i2p::util::Mapping::ExtractString (buf + 11, len - 11);
 					auto addr = i2p::client::context.GetAddressBook ().GetAddress (name);
 					if (!addr || !addr->IsIdentHash ())
 					{
@@ -1170,12 +1161,12 @@ namespace client
 	void I2CPServer::Stop ()
 	{
 		m_Acceptor.cancel ();
-		
+
 		decltype(m_Sessions) sessions;
 		m_Sessions.swap (sessions);
 		for (auto& it: sessions)
 			it.second->Stop ();
-		
+
 		StopIOService ();
 	}
 

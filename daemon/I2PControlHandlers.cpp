@@ -32,15 +32,29 @@ namespace client
 		m_RouterInfoHandlers["i2p.router.status"]                    = &I2PControlHandlers::StatusHandler;
 		m_RouterInfoHandlers["i2p.router.netdb.knownpeers"]          = &I2PControlHandlers::NetDbKnownPeersHandler;
 		m_RouterInfoHandlers["i2p.router.netdb.activepeers"]         = &I2PControlHandlers::NetDbActivePeersHandler;
+		m_RouterInfoHandlers["i2p.router.netdb.floodfills"]          = &I2PControlHandlers::NetDbFloodfillsHandler;
+		m_RouterInfoHandlers["i2p.router.netdb.leasesets"]           = &I2PControlHandlers::NetDbLeaseSetsHandler;
 		m_RouterInfoHandlers["i2p.router.net.bw.inbound.1s"]         = &I2PControlHandlers::InboundBandwidth1S;
 		m_RouterInfoHandlers["i2p.router.net.bw.inbound.15s"]        = &I2PControlHandlers::InboundBandwidth15S;
 		m_RouterInfoHandlers["i2p.router.net.bw.outbound.1s"]        = &I2PControlHandlers::OutboundBandwidth1S;
 		m_RouterInfoHandlers["i2p.router.net.bw.outbound.15s"]       = &I2PControlHandlers::OutboundBandwidth15S;
 		m_RouterInfoHandlers["i2p.router.net.status"]                = &I2PControlHandlers::NetStatusHandler;
+		m_RouterInfoHandlers["i2p.router.net.status.v6"]             = &I2PControlHandlers::NetStatusV6Handler;
+		m_RouterInfoHandlers["i2p.router.net.error"]                 = &I2PControlHandlers::NetErrorHandler;
+		m_RouterInfoHandlers["i2p.router.net.error.v6"]              = &I2PControlHandlers::NetErrorV6Handler;
+		m_RouterInfoHandlers["i2p.router.net.testing"]               = &I2PControlHandlers::NetTestingHandler;
+		m_RouterInfoHandlers["i2p.router.net.testing.v6"]            = &I2PControlHandlers::NetTestingV6Handler;
 		m_RouterInfoHandlers["i2p.router.net.tunnels.participating"] = &I2PControlHandlers::TunnelsParticipatingHandler;
+		m_RouterInfoHandlers["i2p.router.net.tunnels.inbound"]       = &I2PControlHandlers::TunnelsInboundHandler;
+		m_RouterInfoHandlers["i2p.router.net.tunnels.outbound"]      = &I2PControlHandlers::TunnelsOutboundHandler;
 		m_RouterInfoHandlers["i2p.router.net.tunnels.successrate"]   = &I2PControlHandlers::TunnelsSuccessRateHandler;
+		m_RouterInfoHandlers["i2p.router.net.tunnels.totalsuccessrate"] = &I2PControlHandlers::TunnelsTotalSuccessRateHandler;
+		m_RouterInfoHandlers["i2p.router.net.tunnels.queue"]         = &I2PControlHandlers::TunnelsQueueHandler;
+		m_RouterInfoHandlers["i2p.router.net.tunnels.tbmqueue"]      = &I2PControlHandlers::TunnelsTBMQueueHandler;
 		m_RouterInfoHandlers["i2p.router.net.total.received.bytes"]  = &I2PControlHandlers::NetTotalReceivedBytes;
 		m_RouterInfoHandlers["i2p.router.net.total.sent.bytes"]      = &I2PControlHandlers::NetTotalSentBytes;
+		m_RouterInfoHandlers["i2p.router.net.total.transit.bytes"]   = &I2PControlHandlers::NetTotalTransitBytes;
+		m_RouterInfoHandlers["i2p.router.net.bw.transit.15s"]        = &I2PControlHandlers::TransitBandwidth15S;
 
 		// NetworkSetting
 		m_NetworkSettingHandlers["i2p.router.net.bw.in"]  = &I2PControlHandlers::InboundBandwidthLimit;
@@ -132,9 +146,44 @@ namespace client
 		InsertParam (results, "i2p.router.netdb.activepeers", (int)i2p::transport::transports.GetPeers ().size ());
 	}
 
+	void I2PControlHandlers::NetDbFloodfillsHandler (std::ostringstream& results)
+	{
+		InsertParam (results, "i2p.router.netdb.floodfills", i2p::data::netdb.GetNumFloodfills ());
+	}
+
+	void I2PControlHandlers::NetDbLeaseSetsHandler (std::ostringstream& results)
+	{
+		InsertParam (results, "i2p.router.netdb.leasesets", i2p::data::netdb.GetNumLeaseSets ());
+	}
+
 	void I2PControlHandlers::NetStatusHandler (std::ostringstream& results)
 	{
 		InsertParam (results, "i2p.router.net.status", (int)i2p::context.GetStatus ());
+	}
+
+	void I2PControlHandlers::NetStatusV6Handler (std::ostringstream& results)
+	{
+		InsertParam (results, "i2p.router.net.status.v6", (int)i2p::context.GetStatusV6 ());
+	}
+
+	void I2PControlHandlers::NetErrorHandler (std::ostringstream& results)
+	{
+		InsertParam (results, "i2p.router.net.error", (int)i2p::context.GetError ());
+	}
+
+	void I2PControlHandlers::NetErrorV6Handler (std::ostringstream& results)
+	{
+		InsertParam (results, "i2p.router.net.error.v6", (int)i2p::context.GetErrorV6 ());
+	}
+
+	void I2PControlHandlers::NetTestingHandler (std::ostringstream& results)
+	{
+		InsertParam (results, "i2p.router.net.testing", (int)i2p::context.GetTesting ());
+	}
+
+	void I2PControlHandlers::NetTestingV6Handler (std::ostringstream& results)
+	{
+		InsertParam (results, "i2p.router.net.testing.v6", (int)i2p::context.GetTestingV6 ());
 	}
 
 	void I2PControlHandlers::TunnelsParticipatingHandler (std::ostringstream& results)
@@ -143,10 +192,40 @@ namespace client
 		InsertParam (results, "i2p.router.net.tunnels.participating", transit);
 	}
 
+	void I2PControlHandlers::TunnelsInboundHandler (std::ostringstream& results)
+	{
+		int inbound = i2p::tunnel::tunnels.CountInboundTunnels ();
+		InsertParam (results, "i2p.router.net.tunnels.inbound", inbound);
+	}
+
+	void I2PControlHandlers::TunnelsOutboundHandler (std::ostringstream& results)
+	{
+		int outbound = i2p::tunnel::tunnels.CountOutboundTunnels ();
+		InsertParam (results, "i2p.router.net.tunnels.outbound", outbound);
+	}
+
 	void I2PControlHandlers::TunnelsSuccessRateHandler (std::ostringstream& results)
 	{
 		int rate = i2p::tunnel::tunnels.GetTunnelCreationSuccessRate ();
 		InsertParam (results, "i2p.router.net.tunnels.successrate", rate);
+	}
+
+	void I2PControlHandlers::TunnelsTotalSuccessRateHandler (std::ostringstream& results)
+	{
+		int rate = i2p::tunnel::tunnels.GetTotalTunnelCreationSuccessRate ();
+		InsertParam (results, "i2p.router.net.tunnels.totalsuccessrate", rate);
+	}
+
+	void I2PControlHandlers::TunnelsQueueHandler (std::ostringstream& results)
+	{
+		int queue = i2p::tunnel::tunnels.GetQueueSize ();
+		InsertParam (results, "i2p.router.net.tunnels.queue", queue);
+	}
+
+	void I2PControlHandlers::TunnelsTBMQueueHandler (std::ostringstream& results)
+	{
+		int queue = i2p::tunnel::tunnels.GetTBMQueueSize ();
+		InsertParam (results, "i2p.router.net.tunnels.tbmqueue", queue);
 	}
 
 	void I2PControlHandlers::InboundBandwidth1S (std::ostringstream& results)
@@ -173,6 +252,12 @@ namespace client
 		InsertParam (results, "i2p.router.net.bw.outbound.15s", bw);
 	}
 
+	void I2PControlHandlers::TransitBandwidth15S (std::ostringstream& results)
+	{
+		double bw = i2p::transport::transports.GetTransitBandwidth15s ();
+		InsertParam (results, "i2p.router.net.bw.transit.15s", bw);
+	}
+
 	void I2PControlHandlers::NetTotalReceivedBytes (std::ostringstream& results)
 	{
 		InsertParam (results, "i2p.router.net.total.received.bytes", (double)i2p::transport::transports.GetTotalReceivedBytes ());
@@ -181,6 +266,11 @@ namespace client
 	void I2PControlHandlers::NetTotalSentBytes (std::ostringstream& results)
 	{
 		InsertParam (results, "i2p.router.net.total.sent.bytes", (double)i2p::transport::transports.GetTotalSentBytes ());
+	}
+
+	void I2PControlHandlers::NetTotalTransitBytes (std::ostringstream& results)
+	{
+		InsertParam (results, "i2p.router.net.total.transit.bytes", (double)i2p::transport::transports.GetTotalTransitTransmittedBytes ());
 	}
 
 // network setting

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -20,6 +20,7 @@
 #include "I2PEndian.h"
 #include "Blinding.h"
 #include "CryptoKey.h"
+#include "util.h"
 
 namespace i2p
 {
@@ -59,16 +60,13 @@ namespace data
 	};
 
 	typedef std::function<bool(const Lease & l)> LeaseInspectFunc;
-#if OPENSSL_PQ
-	const size_t MAX_LS_BUFFER_SIZE = 8192;
-#else
+
 	const size_t MAX_LS_BUFFER_SIZE = 4096;
-#endif	
 	const size_t LEASE_SIZE = 44; // 32 + 4 + 8
 	const size_t LEASE2_SIZE = 40; // 32 + 4 + 4
 	const uint8_t MAX_NUM_LEASES = 16;
 	const uint64_t LEASESET_EXPIRATION_TIME_THRESHOLD = 12*60*1000; // in milliseconds
-	
+
 	const uint8_t NETDB_STORE_TYPE_LEASESET = 1;
 	class LeaseSet: public RoutingDestination
 	{
@@ -155,9 +153,9 @@ namespace data
 		public:
 
 			LeaseSet2 (uint8_t storeType): LeaseSet (true), m_StoreType (storeType) {}; // for update
-			LeaseSet2 (uint8_t storeType, const uint8_t * buf, size_t len, bool storeLeases = true, 
+			LeaseSet2 (uint8_t storeType, const uint8_t * buf, size_t len, bool storeLeases = true,
 				std::shared_ptr<LocalDestination> dest = nullptr, CryptoKeyType preferredCrypto = CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
-			LeaseSet2 (const uint8_t * buf, size_t len, std::shared_ptr<const BlindedPublicKey> key, 
+			LeaseSet2 (const uint8_t * buf, size_t len, std::shared_ptr<const BlindedPublicKey> key,
 				std::shared_ptr<LocalDestination> dest = nullptr, const uint8_t * secret = nullptr, CryptoKeyType preferredCrypto = CRYPTO_KEY_TYPE_ECIES_X25519_AEAD); // store type 5, called from local netdb only
 			uint8_t GetStoreType () const override { return m_StoreType; };
 			uint32_t GetPublishedTimestamp () const override { return m_PublishedTimestamp; };
@@ -175,7 +173,7 @@ namespace data
 
 			void ReadFromBuffer (const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest,
 				bool readIdentity = true, bool verifySignature = true);
-			void ReadFromBufferEncrypted (const uint8_t * buf, size_t len, std::shared_ptr<const BlindedPublicKey> key, 
+			void ReadFromBufferEncrypted (const uint8_t * buf, size_t len, std::shared_ptr<const BlindedPublicKey> key,
 				std::shared_ptr<LocalDestination> dest, const uint8_t * secret);
 			size_t ReadStandardLS2TypeSpecificPart (const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest);
 			size_t ReadMetaLS2TypeSpecificPart (const uint8_t * buf, size_t len);
@@ -195,6 +193,7 @@ namespace data
 			std::shared_ptr<i2p::crypto::Verifier> m_TransientVerifier;
 			CryptoKeyType m_EncryptionType;
 			std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> m_Encryptor; // for standardLS2
+			i2p::util::Mapping m_Properties;
 	};
 
 	// also called from Streaming.cpp

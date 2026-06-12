@@ -22,7 +22,7 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", "Purple I2P"
-            VALUE "FileDescription", "C++ I2P daemon"
+            VALUE "FileDescription", "C++ daemon for accessing the I2P network"
             VALUE "FileVersion", I2PD_VERSION
             VALUE "InternalName", CODENAME
             VALUE "LegalCopyright", "Copyright (C) 2013-2023, The PurpleI2P Project"

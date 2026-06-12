@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -79,8 +79,7 @@ namespace util
 			{
 				if (!t) return;
 				t->~T ();
-				*(void * *)t = m_Head; // next
-				m_Head = t;
+				Splice (t);
 			}
 
 			template<typename... TArgs>
@@ -109,6 +108,18 @@ namespace util
 				}
 			}
 
+			void Splice (T * t)
+			{
+				*(void * *)t = m_Head; // next
+				m_Head = t;
+			}
+
+			void Splice (T * first, T * last)
+			{
+				*(void * *)last = m_Head; // next
+				m_Head = first;
+			}
+
 		protected:
 
 			T * m_Head;
@@ -123,31 +134,53 @@ namespace util
 			template<typename... TArgs>
 			T * AcquireMt (TArgs&&... args)
 			{
-				if (!this->m_Head) return new T(std::forward<TArgs>(args)...);
-				std::lock_guard<std::mutex> l(m_Mutex);
-				return this->Acquire (std::forward<TArgs>(args)...);
+				T * ret = nullptr;
+				{
+					std::lock_guard<std::mutex> l(m_Mutex);
+					if (this->m_Head) // not empty
+						ret = this->Acquire (std::forward<TArgs>(args)...);
+				}
+				if (!ret) ret = new T(std::forward<TArgs>(args)...);
+				return ret;
 			}
 
 			void ReleaseMt (T * t)
 			{
+				if (!t) return;
+				t->~T ();
 				std::lock_guard<std::mutex> l(m_Mutex);
-				this->Release (t);
+				this->Splice (t);
 			}
 
 			void ReleaseMt (T * * arr, size_t num)
 			{
 				if (!arr || !num) return;
-				std::lock_guard<std::mutex> l(m_Mutex);
+				T * first = nullptr;
 				for (size_t i = 0; i < num; i++)
-					this->Release (arr[i]);
+				{
+					T * t = arr[i];
+					t->~T ();
+					*(void * *)t = first;
+					first = t;
+				}
+				std::lock_guard<std::mutex> l(m_Mutex);
+				this->Splice (first, arr[0]);
 			}
 
 			template<template<typename, typename...>class C, typename... R>
 			void ReleaseMt(const C<T *, R...>& c)
 			{
-				std::lock_guard<std::mutex> l(m_Mutex);
+				if (c.empty ()) return;
+				T * first = nullptr;
 				for (auto& it: c)
-					this->Release (it);
+				{
+					T * t = it;
+					t->~T ();
+					*(void * *)t = first;
+					first = t;
+				}
+				std::lock_guard<std::mutex> l(m_Mutex);
+				this->Splice (first, *(c.begin ()));
 			}
 
 			template<typename... TArgs>
@@ -233,15 +266,21 @@ namespace util
 		public:
 
 			Mapping () = default;
+			Mapping (const Mapping& ) = default;
+			Mapping (Mapping&& ) = default;
+			Mapping (std::initializer_list<std::pair<const std::string, std::string> > options):
+				m_Options (options) {}
+
 			size_t FromBuffer (const uint8_t * buf, size_t len);
 			size_t FromBuffer (size_t size, const uint8_t * buf, size_t len); //without 2 bytes size
 			size_t ToBuffer (uint8_t * buf, size_t len) const;
-			
+
 			std::string_view operator[](std::string_view param) const;
 			bool Insert (std::string_view param, std::string_view value);
+			bool Contains (std::string_view param) const;
 			void CleanUp ();
 			bool IsEmpty () const { return m_Options.empty (); }
-			
+
 			static std::string_view ExtractString (const uint8_t * buf, size_t len);
 			static size_t WriteString (std::string_view str, uint8_t * buf, size_t len);
 			static size_t WriteOption (std::string_view param, std::string_view value, uint8_t * buf, size_t len);
@@ -253,18 +292,32 @@ namespace util
 				if (s.empty ()) return false;
 				auto res = std::from_chars(s.data(), s.data() + s.size(), value);
 				return res.ec == std::errc();
-			}	
+			}
+			bool Get(std::string_view param, bool& value) const
+			{
+				auto s = (*this)[param];
+				if (s.empty ()) return false;
+				return GetBoolParamValue (s, value);
+			}
 			template<typename T>
 			bool Put (std::string_view param, T value)
 			{
 				return Insert (param, std::to_string (value));
-			}	
-			
+			}
+
+		private:
+
+			static bool GetBoolParamValue (std::string_view s, bool& value);
+
 		private:
 
 			std::map<std::string, std::string, std::less<> > m_Options;
-	};	
-	
+
+		public:
+
+			const decltype(m_Options)& GetOptions () const { return m_Options; }
+	};
+
 	namespace net
 	{
 		int GetMTU (const boost::asio::ip::address& localAddress);

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -17,6 +17,25 @@ namespace i2p
 {
 namespace data
 {
+    std::vector<IdentHash> ExtractIdentHashes (std::string_view hashes)
+    {
+        std::vector<IdentHash> idents;
+        if (!hashes.empty ())
+        {
+            size_t pos = 0, comma;
+            do
+            {
+                comma = hashes.find (',', pos);
+                i2p::data::IdentHash ident;
+                if (ident.FromBase64 (hashes.substr (pos, comma != std::string_view::npos ? comma - pos : std::string_view::npos)))
+                    idents.push_back (ident);
+                pos = comma + 1;
+            }
+            while (comma != std::string_view::npos);
+        }
+        return idents;
+    }
+
 	Identity& Identity::operator=(const Keys& keys)
 	{
 		// copy public and signing keys together
@@ -120,17 +139,6 @@ namespace data
 					memcpy (m_StandardIdentity.signingKey, signingKey, i2p::crypto::GOSTR3410_512_PUBLIC_KEY_LENGTH);
 					break;
 				}
-#if OPENSSL_PQ
-				case SIGNING_KEY_TYPE_MLDSA44:
-				{
-					memcpy (m_StandardIdentity, signingKey, 384);
-					excessLen = i2p::crypto::MLDSA44_PUBLIC_KEY_LENGTH - 384;
-					excessBuf = new uint8_t[excessLen];
-					memcpy (excessBuf, signingKey + 384, excessLen);
-					cryptoType = 0xFF; // crypto key is not used
-					break;
-				}	
-#endif					
 				default:
 					LogPrint (eLogError, "Identity: Signing key type ", (int)type, " is not supported");
 			}
@@ -212,25 +220,25 @@ namespace data
 		m_ExtendedLen = other.m_ExtendedLen;
 		if (m_ExtendedLen > 0)
 		{
-			if (m_ExtendedLen > MAX_EXTENDED_BUFFER_SIZE) 
+			if (m_ExtendedLen > MAX_EXTENDED_BUFFER_SIZE)
 			{
-				if (oldLen > MAX_EXTENDED_BUFFER_SIZE) 
+				if (oldLen > MAX_EXTENDED_BUFFER_SIZE)
 				{
 					if (m_ExtendedLen > oldLen)
-					{	
+					{
 						delete[] m_ExtendedBufferPtr;
 						m_ExtendedBufferPtr = new uint8_t[m_ExtendedLen];
-					}	
+					}
 				}
 				else
 					m_ExtendedBufferPtr = new uint8_t[m_ExtendedLen];
-				memcpy (m_ExtendedBufferPtr, other.m_ExtendedBufferPtr, m_ExtendedLen);	
-			}	
+				memcpy (m_ExtendedBufferPtr, other.m_ExtendedBufferPtr, m_ExtendedLen);
+			}
 			else
 			{
 				if (oldLen > MAX_EXTENDED_BUFFER_SIZE) delete[] m_ExtendedBufferPtr;
 				memcpy (m_ExtendedBuffer, other.m_ExtendedBuffer, m_ExtendedLen);
-			}	
+			}
 		}
 		m_Verifier = nullptr;
 		CreateVerifier ();
@@ -267,19 +275,19 @@ namespace data
 			{
 				if (m_ExtendedLen > MAX_EXTENDED_BUFFER_SIZE)
 				{
-					if (oldLen > MAX_EXTENDED_BUFFER_SIZE) 
+					if (oldLen > MAX_EXTENDED_BUFFER_SIZE)
 					{
 						if (m_ExtendedLen > oldLen)
-						{	
+						{
 							delete[] m_ExtendedBufferPtr;
 							m_ExtendedBufferPtr = new uint8_t[m_ExtendedLen];
-						}	
+						}
 					}
 					else
 						m_ExtendedBufferPtr = new uint8_t[m_ExtendedLen];
 					memcpy (m_ExtendedBufferPtr, buf + DEFAULT_IDENTITY_SIZE, m_ExtendedLen);
-				}	
-				else	
+				}
+				else
 					memcpy (m_ExtendedBuffer, buf + DEFAULT_IDENTITY_SIZE, m_ExtendedLen);
 			}
 			else
@@ -305,12 +313,12 @@ namespace data
 		if (fullLen > len) return 0; // buffer is too small and may overflow somewhere else
 		memcpy (buf, &m_StandardIdentity, DEFAULT_IDENTITY_SIZE);
 		if (m_ExtendedLen > 0)
-		{	
+		{
 			if (m_ExtendedLen > MAX_EXTENDED_BUFFER_SIZE)
 				memcpy (buf + DEFAULT_IDENTITY_SIZE, m_ExtendedBufferPtr, m_ExtendedLen);
-			else	
+			else
 				memcpy (buf + DEFAULT_IDENTITY_SIZE, m_ExtendedBuffer, m_ExtendedLen);
-		}	
+		}
 		return fullLen;
 	}
 
@@ -403,10 +411,6 @@ namespace data
 				return new i2p::crypto::GOSTR3410_512_Verifier (i2p::crypto::eGOSTR3410TC26A512);
 			case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519:
 				return new i2p::crypto::RedDSA25519Verifier ();
-#if OPENSSL_PQ
-			case SIGNING_KEY_TYPE_MLDSA44:
-				return new i2p::crypto::MLDSA44Verifier ();
-#endif				
 			case SIGNING_KEY_TYPE_RSA_SHA256_2048:
 			case SIGNING_KEY_TYPE_RSA_SHA384_3072:
 			case SIGNING_KEY_TYPE_RSA_SHA512_4096:
@@ -438,8 +442,8 @@ namespace data
 					memcpy (signingKey + 384, m_ExtendedBufferPtr + 4, excessLen); // right after signing and crypto key types
 					verifier->SetPublicKey (signingKey);
 					delete[] signingKey;
-				}	
-#endif				
+				}
+#endif
 				else
 				{
 					// for P521
@@ -465,7 +469,7 @@ namespace data
 			case CRYPTO_KEY_TYPE_ECIES_X25519_AEAD:
 			case CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD:
 			case CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD:
-			case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD:	
+			case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD:
 				return std::make_shared<i2p::crypto::ECIESX25519AEADRatchetEncryptor>(key);
 			break;
 			case CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC:
@@ -489,8 +493,8 @@ namespace data
 		size_t l = DEFAULT_IDENTITY_SIZE + bufbe16toh (buf + DEFAULT_IDENTITY_SIZE - 2);
 		if (l > len) return 0;
 		return l;
-	}	
-		
+	}
+
 	PrivateKeys& PrivateKeys::operator=(const Keys& keys)
 	{
 		m_Public = std::make_shared<IdentityEx>(Identity (keys));
@@ -558,7 +562,7 @@ namespace data
 			{
 				LogPrint (eLogError, "Identity: Offline signature expired");
 				return 0;
-			}	
+			}
 			SigningKeyType keyType = bufbe16toh (buf + ret); ret += 2; // key type
 			std::unique_ptr<i2p::crypto::Verifier> transientVerifier (IdentityEx::CreateVerifier (keyType));
 			if (!transientVerifier) return 0;
@@ -580,7 +584,7 @@ namespace data
 			// override signing private key
 			m_TransientSigningPrivateKeyLen = transientVerifier->GetPrivateKeyLen ();
 			if (m_TransientSigningPrivateKeyLen + ret > len) return 0;
-			if (m_TransientSigningPrivateKeyLen > 128) m_SigningPrivateKey.resize (m_TransientSigningPrivateKeyLen);
+			if (m_TransientSigningPrivateKeyLen > m_SigningPrivateKey.size ()) m_SigningPrivateKey.resize (m_TransientSigningPrivateKeyLen);
 			memcpy (m_SigningPrivateKey.data (), buf + ret, m_TransientSigningPrivateKeyLen);
 			ret += m_TransientSigningPrivateKeyLen;
 			CreateSigner (keyType);
@@ -692,11 +696,6 @@ namespace data
 			case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519:
 				return new i2p::crypto::RedDSA25519Signer (priv);
 			break;
-#if OPENSSL_PQ
-			case SIGNING_KEY_TYPE_MLDSA44:
-				return new i2p::crypto::MLDSA44Signer (priv);
-			break;	
-#endif				
 			default:
 				LogPrint (eLogError, "Identity: Signing key type ", (int)keyType, " is not supported");
 		}
@@ -738,7 +737,7 @@ namespace data
 			case CRYPTO_KEY_TYPE_ECIES_X25519_AEAD:
 			case CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD:
 			case CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD:
-			case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD:	
+			case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD:
 				return std::make_shared<i2p::crypto::ECIESX25519AEADRatchetDecryptor>(key);
 			break;
 			case CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC:
@@ -757,7 +756,7 @@ namespace data
 			PrivateKeys keys;
 			// signature
 			std::unique_ptr<i2p::crypto::Verifier> verifier (IdentityEx::CreateVerifier (type));
-			std::vector<uint8_t> signingPublicKey(verifier->GetPublicKeyLen ()); 
+			std::vector<uint8_t> signingPublicKey(verifier->GetPublicKeyLen ());
 			keys.m_SigningPrivateKey.resize (verifier->GetPrivateKeyLen ());
 			GenerateSigningKeyPair (type, keys.m_SigningPrivateKey.data (), signingPublicKey.data ());
 			// encryption
@@ -806,11 +805,6 @@ namespace data
 			case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519:
 				i2p::crypto::CreateRedDSA25519RandomKeys (priv, pub);
 			break;
-#if OPENSSL_PQ				
-			case SIGNING_KEY_TYPE_MLDSA44:
-				i2p::crypto::CreateMLDSA44RandomKeys (priv, pub);
-			break;	
-#endif				
 			default:
 				LogPrint (eLogWarning, "Identity: Signing key type ", (int)type, " is not supported. Create DSA-SHA1");
 				i2p::crypto::CreateDSARandomKeys (priv, pub); // DSA-SHA1
@@ -830,7 +824,7 @@ namespace data
 			case CRYPTO_KEY_TYPE_ECIES_X25519_AEAD:
 			case CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD:
 			case CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD:
-			case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD:	
+			case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD:
 				i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (priv, pub);
 			break;
 			default:
@@ -868,32 +862,6 @@ namespace data
 		// signing
 		i2p::crypto::CreateDSARandomKeys (keys.signingPrivateKey, keys.signingKey);
 		return keys;
-	}
-
-	IdentHash CreateRoutingKey (const IdentHash& ident, bool nextDay)
-	{
-		uint8_t buf[41]; // ident + yyyymmdd
-		memcpy (buf, (const uint8_t *)ident, 32);
-		if (nextDay)
-			i2p::util::GetNextDayDate ((char *)(buf + 32));
-		else	
-			i2p::util::GetCurrentDate ((char *)(buf + 32));
-		IdentHash key;
-		SHA256(buf, 40, key);
-		return key;
-	}
-
-	XORMetric operator^(const IdentHash& key1, const IdentHash& key2)
-	{
-		XORMetric m;
-
-		const uint64_t * hash1 = key1.GetLL (), * hash2 = key2.GetLL ();
-		m.metric_ll[0] = hash1[0] ^ hash2[0];
-		m.metric_ll[1] = hash1[1] ^ hash2[1];
-		m.metric_ll[2] = hash1[2] ^ hash2[2];
-		m.metric_ll[3] = hash1[3] ^ hash2[3];
-
-		return m;
 	}
 }
 }

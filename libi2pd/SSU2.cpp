@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, The PurpleI2P Project
+* Copyright (c) 2022-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -26,7 +26,7 @@ namespace transport
 		m_IntroducersUpdateTimer (GetService ()), m_IntroducersUpdateTimerV6 (GetService ()),
 		m_IsPublished (true), m_IsSyncClockFromPeers (true), m_PendingTimeOffset (0),
 		m_Rng(i2p::util::GetMonotonicMicroseconds ()%1000000LL), m_IsForcedFirewalled4 (false),
-		m_IsForcedFirewalled6 (false), m_IsThroughProxy (false)
+		m_IsForcedFirewalled6 (false), m_Version (2), m_IsThroughProxy (false)
 	{
 	}
 
@@ -225,40 +225,40 @@ namespace transport
 		std::lock_guard<std::mutex> l(m_ConnectedRecentlyMutex);
 		auto it = m_ConnectedRecently.find (ep);
 		if (it != m_ConnectedRecently.end ())
-		{	
+		{
 			if (i2p::util::GetSecondsSinceEpoch () <= it->second + (max ? SSU2_MAX_HOLE_PUNCH_EXPIRATION : SSU2_MIN_HOLE_PUNCH_EXPIRATION))
 				return true;
 			else if (max)
 				m_ConnectedRecently.erase (it);
-		}	
+		}
 		return false;
-	}	
+	}
 
 	void SSU2Server::AddConnectedRecently (const boost::asio::ip::udp::endpoint& ep, uint64_t ts)
 	{
-		if (!ep.port () || ep.address ().is_unspecified () || 
+		if (!ep.port () || ep.address ().is_unspecified () ||
 		    i2p::util::GetSecondsSinceEpoch () > ts + SSU2_MAX_HOLE_PUNCH_EXPIRATION) return;
 		std::lock_guard<std::mutex> l(m_ConnectedRecentlyMutex);
 		auto [it, added] = m_ConnectedRecently.try_emplace (ep, ts);
 		if (!added && ts > it->second)
 			it->second = ts; // renew timestamp of existing endpoint
-	}	
-		
+	}
+
 	void SSU2Server::AdjustTimeOffset (int64_t offset, std::shared_ptr<const i2p::data::IdentityEx> from)
 	{
 		if (offset)
-		{	
+		{
 			if (m_PendingTimeOffset) // one more
-			{	
-				if (m_PendingTimeOffsetFrom && from && 
+			{
+				if (m_PendingTimeOffsetFrom && from &&
 					m_PendingTimeOffsetFrom->GetIdentHash ().GetLL()[0] != from->GetIdentHash ().GetLL()[0]) // from different routers
-				{	
+				{
 					if (std::abs (m_PendingTimeOffset - offset) < SSU2_CLOCK_SKEW)
-					{	
+					{
 						offset = (m_PendingTimeOffset + offset)/2; // average
 						LogPrint (eLogWarning, "SSU2: Clock adjusted by ", offset, " seconds");
 						i2p::util::AdjustTimeOffset (offset);
-					}	
+					}
 					else
 						LogPrint (eLogWarning, "SSU2: Time offsets are too different. Clock not adjusted");
 					m_PendingTimeOffset = 0;
@@ -268,18 +268,18 @@ namespace transport
 					LogPrint (eLogWarning, "SSU2: Time offsets from same router. Clock not adjusted");
 			}
 			else
-			{	
-				m_PendingTimeOffset = offset; // first 
+			{
+				m_PendingTimeOffset = offset; // first
 				m_PendingTimeOffsetFrom = from;
-			}	
-		}	
+			}
+		}
 		else
-		{	
+		{
 			m_PendingTimeOffset = 0; // reset
 			m_PendingTimeOffsetFrom = nullptr;
-		}	
-	}	
-		
+		}
+	}
+
 	boost::asio::ip::udp::socket& SSU2Server::OpenSocket (const boost::asio::ip::udp::endpoint& localEndpoint)
 	{
 		boost::asio::ip::udp::socket& socket = localEndpoint.address ().is_v6 () ? m_SocketV6 : m_SocketV4;
@@ -289,14 +289,14 @@ namespace transport
 				socket.close ();
 			socket.open (localEndpoint.protocol ());
 			if (localEndpoint.address ().is_v6 ())
-#if !defined(__HAIKU__)					
+#if !defined(__HAIKU__)
 				socket.set_option (boost::asio::ip::v6_only (true));
 #else
 			{
 				LogPrint (eLogWarning, "SSU2: Socket option IPV6_V6ONLY is not supported");
 				m_IsForcedFirewalled6 = true; // IPV6_V6ONLY is not supported, always Firewalled for ipv6
-			}		
-#endif			
+			}
+#endif
 
 			uint64_t bufferSize = i2p::context.GetBandwidthLimit() * 1024 / 5; // max lag = 200ms
 			bufferSize = std::max(SSU2_SOCKET_MIN_BUFFER_SIZE, std::min(bufferSize, SSU2_SOCKET_MAX_BUFFER_SIZE));
@@ -377,9 +377,9 @@ namespace transport
 				m_PacketsPool.ReleaseMt (packet);
 				Receive (socket);
 				return;
-			}	
+			}
 			packet->len = bytes_transferred;
-		
+
 			boost::system::error_code ec;
 			size_t moreBytes = socket.available (ec);
 			if (!ec && moreBytes)
@@ -387,7 +387,7 @@ namespace transport
 				std::list<Packet *> packets;
 				packets.push_back (packet);
 				while (moreBytes && packets.size () < SSU2_MAX_NUM_PACKETS_PER_BATCH)
-				{	
+				{
 					packet = m_PacketsPool.AcquireMt ();
 					packet->len = socket.receive_from (boost::asio::buffer (packet->buf, SSU2_MAX_PACKET_SIZE), packet->from, 0, ec);
 					if (!ec)
@@ -410,7 +410,7 @@ namespace transport
 				InsertToReceivedPacketsQueue (packets);
 			}
 			else
-				InsertToReceivedPacketsQueue (packet); 
+				InsertToReceivedPacketsQueue (packet);
 			Receive (socket);
 		}
 		else
@@ -462,7 +462,7 @@ namespace transport
 		}
 		if (empty)
 			boost::asio::post (GetService (), [this]() { HandleReceivedPacketsQueue (); });
-	}	
+	}
 
 	void SSU2Server::InsertToReceivedPacketsQueue (std::list<Packet *>& packets)
 	{
@@ -475,15 +475,15 @@ namespace transport
 				m_ReceivedPacketsQueue.splice (m_ReceivedPacketsQueue.end (), packets);
 			else
 			{
-				LogPrint (eLogError, "SSU2: Received queue size ", queueSize, " exceeds max size", SSU2_MAX_RECEIVED_QUEUE_SIZE);
+				LogPrint (eLogError, "SSU2: Received queue size ", queueSize, " exceeds max size ", SSU2_MAX_RECEIVED_QUEUE_SIZE);
 				m_PacketsPool.ReleaseMt (packets);
 				queueSize = 0; // invoke processing just in case
-			}		
+			}
 		}
 		if (!queueSize)
 			boost::asio::post (GetService (), [this]() { HandleReceivedPacketsQueue (); });
-	}	
-		
+	}
+
 	void SSU2Server::HandleReceivedPacketsQueue ()
 	{
 		std::list<Packet *> receivedPackets;
@@ -492,18 +492,18 @@ namespace transport
 			m_ReceivedPacketsQueue.swap (receivedPackets);
 		}
 		HandleReceivedPackets (std::move (receivedPackets));
-	}	
-		
+	}
+
 	bool SSU2Server::AddSession (std::shared_ptr<SSU2Session> session)
 	{
 		if (session)
 		{
 			if (m_Sessions.emplace (session->GetConnID (), session).second)
-			{	
+			{
 				if (session->GetState () != eSSU2SessionStatePeerTest)
 					AddSessionByRouterHash (session);
 				return true;
-			}	
+			}
 		}
 		return false;
 	}
@@ -514,7 +514,7 @@ namespace transport
 		if (it != m_Sessions.end ())
 		{
 			if (it->second->GetState () != eSSU2SessionStatePeerTest)
-			{	
+			{
 				auto ident = it->second->GetRemoteIdentity ();
 				if (ident)
 				{
@@ -522,7 +522,7 @@ namespace transport
 					auto it1 = m_SessionsByRouterHash.find (ident->GetIdentHash ());
 					if (it1 != m_SessionsByRouterHash.end () && it->second == it1->second.lock ())
 						m_SessionsByRouterHash.erase (it1);
-				}	
+				}
 			}
 			if (m_LastSession == it->second)
 				m_LastSession = nullptr;
@@ -533,8 +533,8 @@ namespace transport
 	void SSU2Server::RequestRemoveSession (uint64_t connID)
 	{
 		boost::asio::post (GetService (), [connID, this]() { RemoveSession (connID); });
-	}	
-		
+	}
+
 	void SSU2Server::AddSessionByRouterHash (std::shared_ptr<SSU2Session> session)
 	{
 		if (session)
@@ -551,17 +551,17 @@ namespace transport
 						oldSession = ret.first->second.lock ();
 						// update session
 						ret.first->second = session;
-					}	
-				}	
+					}
+				}
 				if (oldSession && oldSession != session)
-				{	
+				{
 					// session already exists
 					LogPrint (eLogWarning, "SSU2: Session to ", ident->GetIdentHash ().ToBase64 (), " already exists");
 					// move unsent msgs to new session
 					oldSession->MoveSendQueue (session);
 					// terminate existing
 					boost::asio::post (GetService (), std::bind (&SSU2Session::RequestTermination, oldSession, eSSU2TerminationReasonReplacedByNewSession));
-				}	
+				}
 			}
 		}
 	}
@@ -578,7 +578,7 @@ namespace transport
 		std::lock_guard<std::mutex> l(m_SessionsByRouterHashMutex);
 		auto it = m_SessionsByRouterHash.find (ident);
 		if (it != m_SessionsByRouterHash.end ())
-		{	
+		{
 			if (!it->second.expired ())
 			{
 				auto s = it->second.lock ();
@@ -586,7 +586,7 @@ namespace transport
 					return s;
 			}
 			m_SessionsByRouterHash.erase (it);
-		}	
+		}
 		return nullptr;
 	}
 
@@ -615,6 +615,7 @@ namespace transport
 		while (it != m_Sessions.end ())
 		{
 			if (it->second->IsEstablished () && (it->second->GetRemotePeerTestTransports () & remoteTransports) &&
+				it->second->GetRemoteVersion () >= i2p::data::NETDB_MIN_PEER_TEST_VERSION &&
 			    it->second->GetRemoteIdentity ()->GetIdentHash () != excluded)
 				return it->second;
 			it++;
@@ -624,6 +625,7 @@ namespace transport
 		while (it != m_Sessions.end () && ind)
 		{
 			if (it->second->IsEstablished () && (it->second->GetRemotePeerTestTransports () & remoteTransports) &&
+				it->second->GetRemoteVersion () >= i2p::data::NETDB_MIN_PEER_TEST_VERSION &&
 			    it->second->GetRemoteIdentity ()->GetIdentHash () != excluded)
 				return it->second;
 			it++; ind--;
@@ -647,11 +649,11 @@ namespace transport
 		if (it != m_Relays.end ())
 		{
 			if (!it->second.expired ())
-			{	
+			{
 				auto s = it->second.lock ();
 				if (s && s->IsEstablished ())
 					return s;
-			}	
+			}
 			m_Relays.erase (it);
 		}
 		return nullptr;
@@ -660,7 +662,7 @@ namespace transport
 	bool SSU2Server::AddPeerTest (uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts)
 	{
 		return m_PeerTests.emplace (nonce, std::pair{ aliceSession, ts }).second;
-	}	
+	}
 
 	std::shared_ptr<SSU2Session> SSU2Server::GetPeerTest (uint32_t nonce)
 	{
@@ -672,13 +674,13 @@ namespace transport
 			return s;
 		}
 		return nullptr;
-	}	
-		
+	}
+
 	bool SSU2Server::AddRequestedPeerTest (uint32_t nonce, std::shared_ptr<SSU2PeerTestSession> session, uint64_t ts)
 	{
 		return m_RequestedPeerTests.emplace (nonce, std::pair{ session, ts }).second;
 	}
-		
+
 	std::shared_ptr<SSU2PeerTestSession> SSU2Server::GetRequestedPeerTest (uint32_t nonce)
 	{
 		auto it = m_RequestedPeerTests.find (nonce);
@@ -689,8 +691,8 @@ namespace transport
 			return s;
 		}
 		return nullptr;
-	}	
-		
+	}
+
 	void SSU2Server::ProcessNextPacket (uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint& senderEndpoint)
 	{
 		if (len < 24) return;
@@ -740,7 +742,7 @@ namespace transport
 				break;
 				case eSSU2SessionStateHolePunch:
 					m_LastSession->ProcessFirstIncomingMessage (connID, buf, len); // SessionRequest
-				break;	
+				break;
 				case eSSU2SessionStateClosing:
 					m_LastSession->ProcessData (buf, len, senderEndpoint); // we might receive termintaion block
 					if (m_LastSession && m_LastSession->GetState () == eSSU2SessionStateClosing)
@@ -769,15 +771,28 @@ namespace transport
 				else
 					it1->second->ProcessRetry (buf, len);
 			}
-			else if (!i2p::transport::transports.IsInReservedRange(senderEndpoint.address ()) && senderEndpoint.port ())
+			else if (!i2p::transport::transports.IsInReservedRange(senderEndpoint.address ()) && senderEndpoint.port () &&
+				!i2p::transport::transports.IsBanned (senderEndpoint.address ()))
 			{
 				// assume new incoming session
-				auto session = std::make_shared<SSU2Session> (*this);
-				session->SetRemoteEndpoint (senderEndpoint);
-				session->ProcessFirstIncomingMessage (connID, buf, len);
+				size_t queueSize = 0;
+				{
+					std::lock_guard<std::mutex> l(m_ReceivedPacketsQueueMutex);
+					queueSize = m_ReceivedPacketsQueue.size ();
+				}
+				if (queueSize < SSU2_STOP_ACCEPTING_NEW_SESSIONS_QUEUE_SIZE)
+				{
+					auto session = std::make_shared<SSU2Session> (*this);
+					session->SetRemoteEndpoint (senderEndpoint);
+					session->AdjustMaxPayloadSize ();
+					session->SetVersion (m_Version);
+					session->ProcessFirstIncomingMessage (connID, buf, len);
+				}
+				else
+					LogPrint (eLogWarning, "SSU2: Incoming session dropped from ",  senderEndpoint, ". Queue size ", queueSize, " exceeds ", SSU2_STOP_ACCEPTING_NEW_SESSIONS_QUEUE_SIZE);
 			}
 			else
-				LogPrint (eLogError, "SSU2: Incoming packet received from invalid endpoint ", senderEndpoint);
+				LogPrint (eLogWarning, "SSU2: Incoming packet received from invalid or banned endpoint ", senderEndpoint);
 		}
 	}
 
@@ -875,8 +890,8 @@ namespace transport
 			return true;
 		}
 		return false;
-	}	
-		
+	}
+
 	bool SSU2Server::CreateSession (std::shared_ptr<const i2p::data::RouterInfo> router,
 		std::shared_ptr<const i2p::data::RouterInfo::Address> address, bool peerTest)
 	{
@@ -909,8 +924,8 @@ namespace transport
 					if (CheckPendingOutgoingSession (ep, peerTest)) return false;
 					session->SetRemoteEndpoint (ep);
 					isValidEndpoint = true;
-				}	
-			}	
+				}
+			}
 			if (peerTest)
 				session->SetOnEstablished ([session]() {session->SendPeerTest (); });
 
@@ -944,14 +959,14 @@ namespace transport
 				{
 					auto addr = s->GetAddress ();
 					if (addr && addr->IsIntroducer ())
-					{	
+					{
 						s->Introduce (session, it.iTag);
 						return;
 					}
 				}
 				else
 					indices.push_back(i);
-			}	
+			}
 			i++;
 		}
 		// we have to start a new session to an introducer
@@ -970,9 +985,9 @@ namespace transport
 				// introducer is not expired, because in indices
 				r = i2p::data::netdb.FindRouter (introducer.iH);
 				if (r)
-				{	
+				{
 					if (r->IsPublishedOn (i2p::context.GetRouterInfo ().GetCompatibleTransports (false) & // outgoing
-					    (i2p::data::RouterInfo::eSSU2V4 | i2p::data::RouterInfo::eSSU2V6)))                  
+					    (i2p::data::RouterInfo::eSSU2V4 | i2p::data::RouterInfo::eSSU2V6)))
 					{
 						relayTag = introducer.iTag;
 						addr = address->IsV6 () ? r->GetSSU2V6Address () : r->GetSSU2V4Address ();
@@ -986,27 +1001,27 @@ namespace transport
 							{
 								if (i2p::context.SupportsV6 ())
 									addr = r->GetSSU2V6Address ();
-							}	
+							}
 							else
 							{
 								if (i2p::context.SupportsV4 ())
 									addr = r->GetSSU2V4Address ();
-							}	
+							}
 							if (addr && addr->IsIntroducer () && !addr->host.is_unspecified () && addr->port &&
 								!i2p::transport::transports.IsInReservedRange(addr->host))
 								break;
 							else
-							{	
+							{
 								// all addresses are invalid, try next introducer
 								relayTag = 0;
 								addr = nullptr;
 								r = nullptr;
-							}	
-						}	
+							}
+						}
 					}
 					else
 						r = nullptr;
-				}	
+				}
 				else if (!i2p::data::IsRouterBanned (introducer.iH))
 					newRouters.push_back (introducer.iH);
 			}
@@ -1058,7 +1073,7 @@ namespace transport
 		{
 			auto remoteAddr = session->GetAddress ();
 			if (!remoteAddr || !remoteAddr->IsPeerTesting () ||
-			    (v4 && !remoteAddr->IsV4 ()) || (!v4 && !remoteAddr->IsV6 ())) return false;   
+			    (v4 && !remoteAddr->IsV4 ()) || (!v4 && !remoteAddr->IsV6 ())) return false;
 			if (session->IsEstablished ())
 				boost::asio::post (GetService (), [session]() { session->SendPeerTest (); });
 			else
@@ -1072,7 +1087,7 @@ namespace transport
 
 	void SSU2Server::ScheduleTermination ()
 	{
-		m_TerminationTimer.expires_from_now (boost::posix_time::seconds(
+		m_TerminationTimer.expires_after (std::chrono::seconds(
 			SSU2_TERMINATION_CHECK_TIMEOUT + m_Rng () % SSU2_TERMINATION_CHECK_TIMEOUT_VARIANCE));
 		m_TerminationTimer.async_wait (std::bind (&SSU2Server::HandleTerminationTimer,
 			this, std::placeholders::_1));
@@ -1096,7 +1111,7 @@ namespace transport
 					else
 						it++;
 				}
-			}	
+			}
 
 			for (auto it: m_Sessions)
 			{
@@ -1120,7 +1135,7 @@ namespace transport
 
 	void SSU2Server::ScheduleCleanup ()
 	{
-		m_CleanupTimer.expires_from_now (boost::posix_time::seconds(SSU2_CLEANUP_INTERVAL));
+		m_CleanupTimer.expires_after (std::chrono::seconds(SSU2_CLEANUP_INTERVAL));
 		m_CleanupTimer.async_wait (std::bind (&SSU2Server::HandleCleanupTimer,
 			this, std::placeholders::_1));
 	}
@@ -1148,7 +1163,7 @@ namespace transport
 				else
 					it++;
 			}
-			
+
 			for (auto it = m_IncomingTokens.begin (); it != m_IncomingTokens.end (); )
 			{
 				if (ts > it->second.second)
@@ -1171,7 +1186,7 @@ namespace transport
 					it = m_ConnectedRecently.erase (it);
 				else
 					it++;
-			}	
+			}
 
 			for (auto it = m_RequestedPeerTests.begin (); it != m_RequestedPeerTests.end ();)
 			{
@@ -1190,8 +1205,8 @@ namespace transport
 					else
 						it++;
 				}
-			}	
-			
+			}
+
 			m_PacketsPool.CleanUpMt ();
 			m_SentPacketsPool.CleanUp ();
 			m_IncompleteMessagesPool.CleanUp ();
@@ -1202,7 +1217,7 @@ namespace transport
 
 	void SSU2Server::ScheduleResend (bool more)
 	{
-		m_ResendTimer.expires_from_now (boost::posix_time::milliseconds (more ? 
+		m_ResendTimer.expires_after (std::chrono::milliseconds (more ?
 		    (SSU2_RESEND_CHECK_MORE_TIMEOUT + m_Rng () % SSU2_RESEND_CHECK_MORE_TIMEOUT_VARIANCE):
 			(SSU2_RESEND_CHECK_TIMEOUT + m_Rng () % SSU2_RESEND_CHECK_TIMEOUT_VARIANCE)));
 		m_ResendTimer.async_wait (std::bind (&SSU2Server::HandleResendTimer,
@@ -1283,7 +1298,7 @@ namespace transport
 	{
 		std::vector<std::shared_ptr<SSU2Session> > ret;
 		if (maxNumIntroducers <= 0 || m_Sessions.empty ()) return ret;
-		
+
 		std::vector<std::shared_ptr<SSU2Session> > eligible;
 		eligible.reserve (m_Sessions.size ()/2);
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
@@ -1299,7 +1314,7 @@ namespace transport
 
 		if (eligible.size () <= (size_t)maxNumIntroducers)
 			return eligible;
-		else	
+		else
 			std::sample (eligible.begin(), eligible.end(), std::back_inserter(ret), maxNumIntroducers, m_Rng);
 		return ret;
 	}
@@ -1316,31 +1331,31 @@ namespace transport
 			if (session)
 				excluded.insert (ident);
 			if (session)
-			{	
+			{
 				if (session->IsEstablished () && session->GetRelayTag () && session->IsOutgoing () && // still session with introducer?
 					ts < session->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_EXPIRATION)
-				{	
+				{
 					session->SendKeepAlive ();
-					if (ts < session->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_DURATION)	
-					{	
+					if (ts < session->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_DURATION)
+					{
 						newList.push_back ({ident, session->GetRelayTag ()});
 						if (tag != session->GetRelayTag ())
 						{
 							LogPrint (eLogDebug, "SSU2: Introducer session to  ", session->GetIdentHashBase64() , " was replaced. iTag ", tag, "->", session->GetRelayTag ());
 							i2p::context.UpdateSSU2Introducer (ident, v4, session->GetRelayTag (),
 								session->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_EXPIRATION);
-						}	
+						}
 					}
-					else	
-					{	
+					else
+					{
 						impliedList.push_back ({ident, session->GetRelayTag ()}); // keep in introducers list, but not publish
-						session = nullptr;	
+						session = nullptr;
 					}
-				}	
+				}
 				else
 					session = nullptr;
-			}	
-			
+			}
+
 			if (!session)
 				i2p::context.RemoveSSU2Introducer (ident, v4);
 		}
@@ -1356,12 +1371,12 @@ namespace transport
 					auto session = FindSession (it.first);
 					if (session)
 					{
-						if (std::find_if (newList.begin (), newList.end (), 
+						if (std::find_if (newList.begin (), newList.end (),
 						    [&ident = it.first](const auto& s){ return ident == s.first; }) == newList.end ())
-						{	
+						{
 							sessions.push_back (session);
 							numOldSessions++;
-						}	
+						}
 					}
 				}
 				impliedList.clear ();
@@ -1369,9 +1384,9 @@ namespace transport
 
 			for (const auto& it : sessions)
 			{
-				uint32_t tag = it->GetRelayTag ();		
+				uint32_t tag = it->GetRelayTag ();
 				uint32_t exp = it->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_EXPIRATION;
-				if (!tag && ts >= exp) 
+				if (!tag && ts >= exp)
 					continue; // don't publish expired introducer
 				i2p::data::RouterInfo::Introducer introducer;
 				introducer.iTag = tag;
@@ -1393,14 +1408,14 @@ namespace transport
 		if (introducers.size () < SSU2_MAX_NUM_INTRODUCERS || numOldSessions)
 		{
 			// we need to create more sessions with relay tag
-			
+
 			// exclude all existing sessions
 			excluded.clear ();
 			{
 				std::lock_guard<std::mutex> l(m_SessionsByRouterHashMutex);
 				for (const auto& [ident, s] : m_SessionsByRouterHash)
 					excluded.insert (ident);
-			}	
+			}
 
 			// session about to expire are not counted
 			for (auto i = introducers.size (); i < SSU2_MAX_NUM_INTRODUCERS + numOldSessions; i++)
@@ -1429,7 +1444,7 @@ namespace transport
 	{
 		if (m_IsPublished)
 		{
-			m_IntroducersUpdateTimer.expires_from_now (boost::posix_time::seconds(
+			m_IntroducersUpdateTimer.expires_after (std::chrono::seconds(
 				SSU2_KEEP_ALIVE_INTERVAL + m_Rng () % SSU2_KEEP_ALIVE_INTERVAL_VARIANCE));
 			m_IntroducersUpdateTimer.async_wait (std::bind (&SSU2Server::HandleIntroducersUpdateTimer,
 				this, std::placeholders::_1, true));
@@ -1443,7 +1458,7 @@ namespace transport
 			m_IntroducersUpdateTimer.cancel ();
 			i2p::context.ClearSSU2Introducers (true);
 			m_Introducers.clear ();
-			m_IntroducersUpdateTimer.expires_from_now (boost::posix_time::seconds(
+			m_IntroducersUpdateTimer.expires_after (std::chrono::seconds(
 				(SSU2_KEEP_ALIVE_INTERVAL + m_Rng () % SSU2_KEEP_ALIVE_INTERVAL_VARIANCE)/2));
 			m_IntroducersUpdateTimer.async_wait (std::bind (&SSU2Server::HandleIntroducersUpdateTimer,
 				this, std::placeholders::_1, true));
@@ -1454,7 +1469,7 @@ namespace transport
 	{
 		if (m_IsPublished)
 		{
-			m_IntroducersUpdateTimerV6.expires_from_now (boost::posix_time::seconds(
+			m_IntroducersUpdateTimerV6.expires_after (std::chrono::seconds(
 				SSU2_KEEP_ALIVE_INTERVAL + m_Rng () % SSU2_KEEP_ALIVE_INTERVAL_VARIANCE));
 			m_IntroducersUpdateTimerV6.async_wait (std::bind (&SSU2Server::HandleIntroducersUpdateTimer,
 				this, std::placeholders::_1, false));
@@ -1468,7 +1483,7 @@ namespace transport
 			m_IntroducersUpdateTimerV6.cancel ();
 			i2p::context.ClearSSU2Introducers (false);
 			m_IntroducersV6.clear ();
-			m_IntroducersUpdateTimerV6.expires_from_now (boost::posix_time::seconds(
+			m_IntroducersUpdateTimerV6.expires_after (std::chrono::seconds(
 				(SSU2_KEEP_ALIVE_INTERVAL + m_Rng () % SSU2_KEEP_ALIVE_INTERVAL_VARIANCE)/2));
 			m_IntroducersUpdateTimerV6.async_wait (std::bind (&SSU2Server::HandleIntroducersUpdateTimer,
 				this, std::placeholders::_1, false));
@@ -1544,8 +1559,15 @@ namespace transport
 	void SSU2Server::ChaCha20 (const uint8_t * msg, size_t msgLen, const uint8_t * key, const uint8_t * nonce, uint8_t * out)
 	{
 		m_ChaCha20 (msg, msgLen, key, nonce, out);
-	}	
-		
+	}
+
+	void SSU2Server::SetVersion (int version)
+	{
+#if OPENSSL_PQ
+        m_Version = version;
+#endif
+	}
+
 	void SSU2Server::SendThroughProxy (const uint8_t * header, size_t headerLen, const uint8_t * headerX, size_t headerXLen,
 		const uint8_t * payload, size_t payloadLen, const boost::asio::ip::udp::endpoint& to)
 	{
@@ -1776,8 +1798,8 @@ namespace transport
 		if (m_ProxyConnectRetryTimer)
 			m_ProxyConnectRetryTimer->cancel ();
 		else
-			m_ProxyConnectRetryTimer.reset (new boost::asio::deadline_timer (m_ReceiveService.GetService ()));
-		m_ProxyConnectRetryTimer->expires_from_now (boost::posix_time::seconds (SSU2_PROXY_CONNECT_RETRY_TIMEOUT));
+			m_ProxyConnectRetryTimer.reset (new boost::asio::steady_timer (m_ReceiveService.GetService ()));
+		m_ProxyConnectRetryTimer->expires_after (std::chrono::seconds (SSU2_PROXY_CONNECT_RETRY_TIMEOUT));
 		m_ProxyConnectRetryTimer->async_wait (
 			[this](const boost::system::error_code& ecode)
 			{

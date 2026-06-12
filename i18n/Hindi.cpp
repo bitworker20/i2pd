@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, The PurpleI2P Project
+* Copyright (c) 2025-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -213,7 +213,7 @@ namespace hindi // language namespace
 		{"%d hours", {"%d घंटा", "%dघंटे"}},
 		{"%d minutes", {"%d मिनट", "%d मिनट"}},
 		{"%d seconds", {"%d सेकंड", "%d सेकंड"}},
-		{"", {"", "", ""}},
+		{"", {"", ""}},
 	};
 
 	std::shared_ptr<const i2p::i18n::Locale> GetLocale()

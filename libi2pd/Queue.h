@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -37,11 +37,11 @@ namespace util
 				if (!list.empty ())
 				{
 					std::unique_lock<std::mutex> l(m_QueueMutex);
-					m_Queue.splice (m_Queue.end (), list); 
+					m_Queue.splice (m_Queue.end (), list);
 					m_NonEmpty.notify_one ();
-				}	
-			}		
-		
+				}
+			}
+
 			Element GetNext ()
 			{
 				std::unique_lock<std::mutex> l(m_QueueMutex);
@@ -84,7 +84,7 @@ namespace util
 				return m_Queue.empty ();
 			}
 
-			int GetSize () const
+			size_t GetSize () const
 			{
 				std::unique_lock<std::mutex> l(m_QueueMutex);
 				return m_Queue.size ();
@@ -107,18 +107,18 @@ namespace util
 			void GetWholeQueue (std::list<Element>& queue)
 			{
 				if (!queue.empty ())
-				{	
+				{
 					std::list<Element> newQueue;
 					queue.swap (newQueue);
-				}	
+				}
 				{
 					std::unique_lock<std::mutex> l(m_QueueMutex);
 					m_Queue.swap (queue);
 				}
-			}		
+			}
 
 		private:
-		
+
 			Element GetNonThreadSafe (bool peek = false)
 			{
 				if (!m_Queue.empty ())

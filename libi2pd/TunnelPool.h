@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -17,6 +17,7 @@
 #include <memory>
 #include <random>
 #include "Identity.h"
+#include "IdentMetrics.h"
 #include "LeaseSet.h"
 #include "RouterInfo.h"
 #include "I2NPProtocol.h"
@@ -29,6 +30,7 @@ namespace i2p
 namespace tunnel
 {
 	const int TUNNEL_POOL_MANAGE_INTERVAL = 10; // in seconds
+	const int TUNNEL_POOL_TUNNEL_CREATED_RECENTLY_INTERVAL = 120; // in seconds
 	const int TUNNEL_POOL_MAX_INBOUND_TUNNELS_QUANTITY = 16;
 	const int TUNNEL_POOL_MAX_OUTBOUND_TUNNELS_QUANTITY = 16;
 	const int TUNNEL_POOL_MAX_NUM_BUILD_REQUESTS = 3;
@@ -42,7 +44,6 @@ namespace tunnel
 	struct Path
 	{
 		std::vector<Peer> peers;
-		bool isShort = true;
 		i2p::data::RouterInfo::CompatibleTransports farEndTransports = i2p::data::RouterInfo::eAllTransports;
 
 		void Add (std::shared_ptr<const i2p::data::RouterInfo> r);
@@ -67,7 +68,8 @@ namespace tunnel
 
 			std::shared_ptr<i2p::garlic::GarlicDestination> GetLocalDestination () const { return m_LocalDestination; };
 			void SetLocalDestination (std::shared_ptr<i2p::garlic::GarlicDestination> destination) { m_LocalDestination = destination; };
-			void SetExplicitPeers (std::shared_ptr<std::vector<i2p::data::IdentHash> > explicitPeers);
+			void SetExplicitPeers (std::vector<i2p::data::IdentHash> explicitPeers);
+			void SetTrustedRouters (std::vector<i2p::data::IdentHash> routers);
 
 			void CreateTunnels ();
 			void TunnelCreated (std::shared_ptr<InboundTunnel> createdTunnel);
@@ -116,30 +118,29 @@ namespace tunnel
 			std::shared_ptr<OutboundTunnel> GetLowestLatencyOutboundTunnel(std::shared_ptr<OutboundTunnel> exclude = nullptr) const;
 
 			// for overriding tunnel peer selection
-			std::shared_ptr<const i2p::data::RouterInfo> SelectNextHop (std::shared_ptr<const i2p::data::RouterInfo> prevHop, bool reverse, bool endpoint) const;
+			std::shared_ptr<const i2p::data::RouterInfo> SelectNextHop (std::shared_ptr<const i2p::data::RouterInfo> prevHop, bool reverse, bool endpoint);
 			bool StandardSelectPeers(Path & path, int numHops, bool inbound, SelectHopFunc nextHop);
 
-			std::mt19937& GetRng () { return m_Rng; }
-			
 		private:
 
-			void TestTunnels ();
-			void CreateInboundTunnel ();
-			void CreateOutboundTunnel ();
-			void CreatePairedInboundTunnel (std::shared_ptr<OutboundTunnel> outboundTunnel);
+			void TestTunnels (uint64_t ts);
+			void CreateTunnels (uint64_t ts);
+			void CreateInboundTunnel (uint64_t ts);
+			void CreateOutboundTunnel (uint64_t ts);
 			template<class TTunnels>
 			typename TTunnels::value_type GetNextTunnel (TTunnels& tunnels,
 				typename TTunnels::value_type excluded, i2p::data::RouterInfo::CompatibleTransports compatible);
 			bool SelectPeers (Path& path, bool isInbound);
 			bool SelectExplicitPeers (Path& path, bool isInbound);
 			bool ValidatePeers (std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers) const;
+			std::shared_ptr<const i2p::data::RouterInfo> SelectTrustedRouter (bool inbound) const;
 
 		private:
 
 			std::shared_ptr<i2p::garlic::GarlicDestination> m_LocalDestination;
 			int m_NumInboundHops, m_NumOutboundHops, m_NumInboundTunnels, m_NumOutboundTunnels,
 				m_InboundVariance, m_OutboundVariance;
-			std::shared_ptr<std::vector<i2p::data::IdentHash> > m_ExplicitPeers;
+			std::vector<i2p::data::IdentHash> m_ExplicitPeers, m_TrustedRouters;
 			mutable std::mutex m_InboundTunnelsMutex;
 			std::set<std::shared_ptr<InboundTunnel>, TunnelCreationTimeCmp> m_InboundTunnels; // recent tunnel appears first
 			mutable std::mutex m_OutboundTunnelsMutex;
@@ -150,12 +151,12 @@ namespace tunnel
 			uint64_t m_NextManageTime; // in seconds
 			std::mutex m_CustomPeerSelectorMutex;
 			ITunnelPeerSelector * m_CustomPeerSelector;
+			std::mt19937 m_Rng; // for tunnel selection
+			i2p::data::PeerOrdering m_InboundPeerOrdering, m_OutboundPeerOrdering;
 
 			int m_MinLatency = 0; // if > 0 this tunnel pool will try building tunnels with minimum latency by ms
 			int m_MaxLatency = 0; // if > 0 this tunnel pool will try building tunnels with maximum latency by ms
 
-			std::mt19937 m_Rng;
-			
 		public:
 
 			// for HTTP only

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2013-2026, The PurpleI2P Project
 *
 * This file is part of Purple i2pd project and licensed under BSD3
 *
@@ -48,7 +48,7 @@ namespace transport
 			size_t Insert (const uint8_t * buf, size_t len)
 			{
 				if (m_Size + len > sz) len = sz - m_Size;
-				memcpy (m_Buf + m_Size, buf, len); 
+				memcpy (m_Buf + m_Size, buf, len);
 				m_Size += len;
 				return len;
 			}
@@ -83,10 +83,10 @@ namespace transport
 		public:
 
 			TransportSession (std::shared_ptr<const i2p::data::RouterInfo> router, int terminationTimeout):
-				m_IsOutgoing (router), m_TerminationTimeout (terminationTimeout), m_HandshakeInterval (0), 
-				m_SendQueueSize (0), m_NumSentBytes (0), m_NumReceivedBytes (0),
+				m_IsOutgoing (router), m_TerminationTimeout (terminationTimeout), m_HandshakeInterval (0),
+				m_Version (2), m_SendQueueSize (0), m_NumSentBytes (0), m_NumReceivedBytes (0),
 				m_LastBandWidthUpdateNumSentBytes (0), m_LastBandWidthUpdateNumReceivedBytes (0),
-				m_LastActivityTimestamp (i2p::util::GetSecondsSinceEpoch ()), 
+				m_LastActivityTimestamp (i2p::util::GetSecondsSinceEpoch ()),
 				m_LastBandwidthUpdateTimestamp (m_LastActivityTimestamp), m_InBandwidth (0), m_OutBandwidth (0)
 			{
 				if (router)
@@ -116,14 +116,14 @@ namespace transport
 				m_LastActivityTimestamp = i2p::util::GetSecondsSinceEpoch ();
 				m_NumSentBytes += len;
 				UpdateBandwidth ();
-			}	
+			}
 			size_t GetNumReceivedBytes () const { return m_NumReceivedBytes; };
 			void UpdateNumReceivedBytes (size_t len)
 			{
 				m_LastActivityTimestamp = i2p::util::GetSecondsSinceEpoch ();
 				m_NumReceivedBytes += len;
 				UpdateBandwidth ();
-			}		
+			}
 			size_t GetSendQueueSize () const { return m_SendQueueSize; };
 			void SetSendQueueSize (size_t s) { m_SendQueueSize = s; };
 			bool IsOutgoing () const { return m_IsOutgoing; };
@@ -133,8 +133,8 @@ namespace transport
 			{
 				auto limit = isHighBandwidth ? i2p::data::HIGH_BANDWIDTH_LIMIT*1024 : i2p::data::LOW_BANDWIDTH_LIMIT*1024; // convert to bytes
 				return std::max (m_InBandwidth, m_OutBandwidth) > limit;
-			}	
-			
+			}
+
 			int GetTerminationTimeout () const { return m_TerminationTimeout; };
 			void SetTerminationTimeout (int terminationTimeout) { m_TerminationTimeout = terminationTimeout; };
 			bool IsTerminationTimeoutExpired (uint64_t ts) const
@@ -148,40 +148,43 @@ namespace transport
 
 			uint64_t GetLastActivityTimestamp () const { return m_LastActivityTimestamp; };
 			void SetLastActivityTimestamp (uint64_t ts) { m_LastActivityTimestamp = ts; };
-			
+
+			uint8_t GetVersion () const { return m_Version; };
+
 			virtual uint32_t GetRelayTag () const { return 0; };
-			virtual void SendLocalRouterInfo (bool update = false) 
+			virtual void SendLocalRouterInfo (bool update = false)
 			{
 				std::list<std::shared_ptr<I2NPMessage> > msgs{ CreateDatabaseStoreMsg () };
-				SendI2NPMessages (msgs); 
+				SendI2NPMessages (msgs);
 			};
 			virtual void SendI2NPMessages (std::list<std::shared_ptr<I2NPMessage> >& msgs) = 0;
 			virtual bool IsEstablished () const = 0;
 			virtual i2p::data::RouterInfo::SupportedTransports GetTransportType () const = 0;
+			virtual boost::asio::ip::address GetRemoteAddress () const = 0;
 
 		private:
 
 			void UpdateBandwidth ()
 			{
 				int64_t interval = m_LastActivityTimestamp - m_LastBandwidthUpdateTimestamp;
-				if (interval < 0 || interval > 60*10) // 10 minutes 
+				if (interval < 0 || interval > 60*10) // 10 minutes
 				{
 					// clock was adjusted, copy new values
 					m_LastBandWidthUpdateNumSentBytes = m_NumSentBytes;
 					m_LastBandWidthUpdateNumReceivedBytes = m_NumReceivedBytes;
 					m_LastBandwidthUpdateTimestamp = m_LastActivityTimestamp;
 					return;
-				}	
+				}
 				if ((uint64_t)interval > TRANSPORT_SESSION_BANDWIDTH_UPDATE_MIN_INTERVAL)
-				{	
+				{
 					m_OutBandwidth = (m_NumSentBytes - m_LastBandWidthUpdateNumSentBytes)/interval;
 					m_LastBandWidthUpdateNumSentBytes = m_NumSentBytes;
 					m_InBandwidth = (m_NumReceivedBytes - m_LastBandWidthUpdateNumReceivedBytes)/interval;
 					m_LastBandWidthUpdateNumReceivedBytes = m_NumReceivedBytes;
 					m_LastBandwidthUpdateTimestamp = m_LastActivityTimestamp;
-				}	
-			}	
-			
+				}
+			}
+
 		protected:
 
 			std::shared_ptr<const i2p::data::IdentityEx> m_RemoteIdentity;
@@ -190,12 +193,13 @@ namespace transport
 			int m_TerminationTimeout;
 			uint32_t m_CreationTime; // seconds since epoch
 			int64_t m_HandshakeInterval; // in milliseconds between SessionRequest->SessionCreated or SessionCreated->SessionConfirmed
+			uint8_t m_Version; // protocol version
 
 		private:
 
-			size_t m_SendQueueSize, m_NumSentBytes, m_NumReceivedBytes, 
+			size_t m_SendQueueSize, m_NumSentBytes, m_NumReceivedBytes,
 				m_LastBandWidthUpdateNumSentBytes, m_LastBandWidthUpdateNumReceivedBytes;
-			uint64_t m_LastActivityTimestamp, m_LastBandwidthUpdateTimestamp;	
+			uint64_t m_LastActivityTimestamp, m_LastBandwidthUpdateTimestamp;
 			uint32_t m_InBandwidth, m_OutBandwidth;
 	};
 }

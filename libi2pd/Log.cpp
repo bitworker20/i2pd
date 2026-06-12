@@ -6,6 +6,8 @@
 * See full license text in LICENSE file at top of project tree
 */
 
+#include <time.h>
+
 #include "Log.h"
 #include "util.h"
 
@@ -140,8 +142,14 @@ namespace log {
 	}
 
 	const char * Log::TimeAsString(std::time_t t) {
+		struct tm caltime;
 		if (t != m_LastTimestamp) {
-			strftime(m_LastDateTime, sizeof(m_LastDateTime), m_TimeFormat.c_str(), localtime(&t));
+#ifdef _WIN32
+			localtime_s(&caltime, &t);
+#else
+			localtime_r(&t, &caltime);
+#endif
+			strftime(m_LastDateTime, sizeof(m_LastDateTime), m_TimeFormat.c_str(), &caltime);
 			m_LastTimestamp = t;
 		}
 		return m_LastDateTime;
