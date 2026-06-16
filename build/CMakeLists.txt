@@ -9,6 +9,8 @@ endif()
 # for debugging
 #set(CMAKE_VERBOSE_MAKEFILE on)
 
+set(Boost_USE_STATIC_LIBS ON)
+
 # fix: error C2039: 'string_view': is not a member of 'std'
 # MSVC defaults to C++14
 set(CMAKE_CXX_STANDARD 17)
