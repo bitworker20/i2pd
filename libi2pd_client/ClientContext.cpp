@@ -19,6 +19,7 @@
 #include "HTTPProxy.h"
 #include "SOCKS.h"
 #include "MatchedDestination.h"
+#include "SAMSSL.h"
 
 namespace i2p
 {
@@ -80,9 +81,15 @@ namespace client
 					if (samSslPort)
 					{
 						std::string cert, key; i2p::config::GetOption("sam.cert", cert); i2p::config::GetOption("sam.key", key);
+						bool samSslAuth; i2p::config::GetOption("sam.ssl.auth", samSslAuth);
+						std::string samSslUser; i2p::config::GetOption("sam.ssl.user", samSslUser);
+						std::string samSslPassword; i2p::config::GetOption("sam.ssl.password", samSslPassword);
+						if (samSslAuth && (samSslUser.empty () || samSslPassword.empty ()))
+							ThrowFatal ("SAM over SSL authentication is enabled but sam.ssl.user or sam.ssl.password is empty");
 						std::string samSslAddr; i2p::config::GetOption("sam.ssladdress", samSslAddr);
 						if (samSslAddr.empty()) samSslAddr = samAddr;
-						m_SamSsl = new SAMSslTerminator (samSslAddr, samSslPort, samAddr, samPortTCP, cert, key);
+						m_SamSsl = std::make_unique<SAMSslTerminator> (samSslAddr, samSslPort, samAddr, samPortTCP,
+							cert, key, samSslAuth, samSslUser, samSslPassword);
 						m_SamSsl->Start();
 						LogPrint(eLogInfo, "Clients: SAM over SSL listening at ", samSslAddr, ":", samSslPort, " -> ", samAddr, ":", samPortTCP);
 					}
@@ -175,20 +182,19 @@ namespace client
 		}
 		m_ServerTunnels.clear ();
 
+		if (m_SamSsl)
+		{
+			LogPrint(eLogInfo, "Clients: Stopping SAM over SSL");
+			m_SamSsl->Stop ();
+			m_SamSsl.reset ();
+		}
+
 		if (m_SamBridge)
 		{
 			LogPrint(eLogInfo, "Clients: Stopping SAM bridge");
 			m_SamBridge->Stop ();
 			delete m_SamBridge;
 			m_SamBridge = nullptr;
-		}
-
-		if (m_SamSsl)
-		{
-			LogPrint(eLogInfo, "Clients: Stopping SAM over SSL");
-			m_SamSsl->Stop ();
-			delete m_SamSsl;
-			m_SamSsl = nullptr;
 		}
 
 		if (m_BOBCommandChannel)

@@ -211,6 +211,9 @@ namespace config {
 			("sam.sslport", value<uint16_t>()->default_value(0),              "SAM TLS/SSL listen TCP port (0 disables)")
 			("sam.cert", value<std::string>()->default_value("sam.crt.pem"),  "SAM TLS/SSL certificate (PEM)")
 			("sam.key", value<std::string>()->default_value("sam.key.pem"),   "SAM TLS/SSL private key (PEM)")
+			("sam.ssl.auth", value<bool>()->default_value(false),             "Require USER/PASSWORD in SAM TLS/SSL HELLO")
+			("sam.ssl.user", value<std::string>()->default_value(""),         "SAM TLS/SSL authentication user")
+			("sam.ssl.password", value<std::string>()->default_value(""),     "SAM TLS/SSL authentication password")
 		;
 
 		options_description bob("BOB options");

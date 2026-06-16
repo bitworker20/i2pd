@@ -42,6 +42,9 @@ ssladdress = 0.0.0.0       ; TLS listen address (empty -> fall back to sam.addre
 sslport = 7666             ; TLS listen port (0 disables)
 cert = sam.crt.pem         ; PEM certificate path (relative -> i2pd data dir)
 key = sam.key.pem          ; PEM private key path (relative -> i2pd data dir)
+ssl.auth = true            ; Require USER/PASSWORD in HELLO before forwarding
+ssl.user = <user>          ; SAM over TLS/SSL user
+ssl.password = <password>  ; SAM over TLS/SSL password
 ```
 
 Notes:
@@ -49,13 +52,15 @@ Notes:
 - If `ssl = true` and `sslport > 0`, the TLS terminator listens at `ssladdress:sslport` and forwards to `address:port`.
 - If `ssladdress` is empty, it defaults to `address`.
 - If the cert/key files do not exist, self-signed files are generated.
+- If `ssl.auth = true`, clients must include `USER` and `PASSWORD` in the initial `HELLO VERSION` line. The terminator removes those fields before forwarding the handshake to the plaintext SAM bridge.
 
 ### Security Considerations
 
 - **Scope of encryption**: TLS protects the client-to-terminator hop. The hop from the terminator to the SAM bridge is plaintext on the local machine.
+- **Scope of authentication**: `ssl.auth` protects only the SAM over TLS/SSL listener. Keep the plaintext SAM listener bound to `127.0.0.1` or otherwise firewall it, or clients can bypass the TLS authentication by connecting directly to plaintext SAM.
 - **Firewalling**: If you bind the TLS listener to a public address, ensure your firewall policy only allows intended clients.
 - **Certificates**: Replace the auto-generated self-signed certificate with your own signed certificate for production deployments.
-- **Authentication**: Client certificate authentication is not implemented in this initial version.
+- **Authentication**: `ssl.auth` provides a local USER/PASSWORD check in the TLS terminator. Client certificate authentication is not implemented in this initial version.
 
 ### Compatibility
 
@@ -80,7 +85,7 @@ openssl s_client -connect <ssladdress>:<sslport>
 3) Send a simple SAM handshake to confirm forwarding:
 
 ```text
-HELLO VERSION MIN=3.0 MAX=3.3\n
+HELLO VERSION MIN=3.0 MAX=3.3 USER=<user> PASSWORD=<password>\n
 ```
 
 Expected response includes:
@@ -112,5 +117,3 @@ If you see this, the TLS terminator and forwarding to the backend SAM are workin
 
 - No extra system dependencies beyond what i2pd already uses (Boost.Asio and OpenSSL).
 - The feature is compiled as part of `libi2pdclient` and wired in `ClientContext`.
-
-

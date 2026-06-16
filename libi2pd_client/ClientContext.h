@@ -21,7 +21,6 @@
 #include "SAM.h"
 #include "BOB.h"
 #include "I2CP.h"
-#include "SAMSSL.h"
 #include "AddressBook.h"
 #include "I18N_langs.h"
 
@@ -29,6 +28,8 @@ namespace i2p
 {
 namespace client
 {
+	class SAMSslTerminator;
+
 	const char I2P_TUNNELS_SECTION_TYPE[] = "type";
 	const char I2P_TUNNELS_SECTION_TYPE_CLIENT[] = "client";
 	const char I2P_TUNNELS_SECTION_TYPE_SERVER[] = "server";
@@ -155,7 +156,7 @@ namespace client
 			std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PUDPServerTunnel> > m_ServerForwards; // <destination,port> -> udp tunnel
 
 			SAMBridge * m_SamBridge;
-			SAMSslTerminator * m_SamSsl;
+			std::unique_ptr<SAMSslTerminator> m_SamSsl;
 			BOBCommandChannel * m_BOBCommandChannel;
 			I2CPServer * m_I2CPServer;
 
